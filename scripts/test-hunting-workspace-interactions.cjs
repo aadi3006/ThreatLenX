@@ -12,12 +12,17 @@ if (!fs.existsSync(DOCS_SCREENSHOTS)) {
 
 async function runStage2Suite() {
   const port = 9400;
+  const profileDir = '/tmp/threatlenx-chrome-profile-9400';
+  
+  console.log(`[INIT] Launching Headless Chrome on port ${port}...`);
   const chromeProcess = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
     '--headless=new',
     `--remote-debugging-port=${port}`,
     '--window-size=1440,900',
-    '--user-data-dir=/tmp/chrome-hunting-test-9400',
+    `--user-data-dir=${profileDir}`,
     '--no-first-run',
+    '--no-proxy-server',
+    '--proxy-bypass-list=<-loopback>',
     'about:blank'
   ], { stdio: 'ignore' });
 
@@ -42,6 +47,7 @@ async function runStage2Suite() {
     }
 
     const pageTarget = targets.find(t => t.type === 'page');
+    console.log('[CONNECT] Connected to page target:', pageTarget.webSocketDebuggerUrl);
     const ws = new WebSocket(pageTarget.webSocketDebuggerUrl, { maxPayload: 100 * 1024 * 1024 });
     await new Promise((res, rej) => {
       ws.once('open', res);
@@ -90,25 +96,118 @@ async function runStage2Suite() {
       }
     };
 
+    const evalAsyncJson = async (expr) => {
+      const resp = await send('Runtime.evaluate', {
+        expression: `(async () => {
+          try {
+            const val = await (${expr});
+            return JSON.stringify(val);
+          } catch (e) {
+            return JSON.stringify({ __evalError: e.message, __evalStack: e.stack });
+          }
+        })()`,
+        awaitPromise: true,
+        returnByValue: true
+      });
+      const val = resp?.result?.result?.value;
+      if (val === undefined) return null;
+      try {
+        return JSON.parse(val);
+      } catch {
+        return val;
+      }
+    };
+
     await send('Page.enable');
     await send('Runtime.enable');
     await send('DOM.enable');
 
-    console.log('[1/11] Setting 1440x900 viewport & navigating to http://127.0.0.1:3000/...');
+    console.log('[1/12] Setting 1440x900 viewport & navigating to http://127.0.0.1:3000/...');
     await send('Emulation.setDeviceMetricsOverride', {
       width: 1440,
       height: 900,
       deviceScaleFactor: 1,
       mobile: false
     });
-    await send('Page.navigate', { url: 'http://127.0.0.1:3000/' });
+    ws.send(JSON.stringify({ id: msgId++, method: 'Page.navigate', params: { url: 'http://127.0.0.1:3000/' } }));
 
-    // Wait 2.5s for React hydration to complete
-    console.log('[2/11] Waiting 2.5s for React hydration...');
-    await new Promise(r => setTimeout(r, 2500));
+    // Poll for 6 hub nodes
+    console.log('[2/12] Waiting for React hydration on Spatial Command Hub...');
+    let hydrated = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 300));
+      const hubCount = await evalJson(`document.querySelectorAll('.hub-workspace-node').length`);
+      if (hubCount === 6) {
+        hydrated = true;
+        console.log(`✓ Spatial Hub hydrated with 6 zone nodes at poll ${i}!`);
+        break;
+      }
+    }
+    if (!hydrated) {
+      console.warn('Hub nodes did not reach 6, continuing anyway...');
+    }
+    // Allow any asynchronous background tasks (like LocalProvider relationship sync) to complete fully
+    console.log('Waiting 4.5s for initial background seeding to settle before baseline IDB snapshot...');
+    await new Promise(r => setTimeout(r, 4500));
 
-    // Navigate to HUNTING by clicking Zone 3 (Threat Hunting)
-    console.log('[3/11] Navigating to Threat Hunting Workspace...');
+    // =========================================================================
+    // BEFORE STATE: Capture IndexedDB store record IDs and counts
+    // =========================================================================
+    console.log('\n[2b/12] Inspecting IndexedDB "es-spatial-db" BEFORE verification...');
+    const readIdbExpr = `new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('IDB open timed out')), 5000);
+      const req = indexedDB.open('es-spatial-db');
+      req.onsuccess = (e) => {
+        clearTimeout(timeout);
+        const db = e.target.result;
+        const names = Array.from(db.objectStoreNames).sort();
+        const report = {};
+        if (names.length === 0) return resolve(report);
+
+        const tx = db.transaction(names, 'readonly');
+        let pending = names.length * 2;
+
+        names.forEach(name => {
+          const store = tx.objectStore(name);
+          report[name] = { count: 0, keys: [] };
+
+          const cr = store.count();
+          cr.onsuccess = () => {
+            report[name].count = cr.result;
+            if (--pending === 0) resolve(report);
+          };
+          cr.onerror = () => {
+            if (--pending === 0) resolve(report);
+          };
+
+          const kr = store.getAllKeys();
+          kr.onsuccess = () => {
+            report[name].keys = kr.result.map(String);
+            if (--pending === 0) resolve(report);
+          };
+          kr.onerror = () => {
+            if (--pending === 0) resolve(report);
+          };
+        });
+      };
+      req.onerror = (e) => {
+        clearTimeout(timeout);
+        reject(new Error('IDB open error: ' + (e.target.error?.message || 'unknown')));
+      };
+    })`;
+
+    const dbBefore = await evalAsyncJson(readIdbExpr);
+    console.log(`✓ Stored IDB records BEFORE verification: ${Object.keys(dbBefore).length} stores found.`);
+    for (const k of ['events', 'threat_hunts', 'incidents', 'alerts', 'cases', 'evidence']) {
+      if (dbBefore[k]) {
+        console.log(`    - ${k}: ${dbBefore[k].count} items [${dbBefore[k].keys.slice(0, 3).join(', ')}${dbBefore[k].keys.length > 3 ? '...' : ''}]`);
+      }
+    }
+
+    // =========================================================================
+    // STEP 3: Navigate to Zone 3 (Threat Hunting Workspace)
+    // =========================================================================
+    console.log('\n[3/12] Navigating to Threat Hunting Workspace...');
     await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       const huntNode = nodes.find(n => n.textContent && n.textContent.includes('THREAT HUNTING')) || nodes[2];
@@ -197,33 +296,53 @@ async function runStage2Suite() {
       const eventId = document.querySelector('.inspector-val')?.textContent?.trim();
       const provenance = document.querySelector('.provenance-pill')?.textContent?.trim();
       const headerTitle = document.querySelector('.hunt-inspector-header')?.textContent?.replace(/\\s+/g, ' ')?.trim();
+      const chips = Array.from(document.querySelectorAll('.hunt-entity-chip')).map(c => c.textContent.trim());
+      const actions = Array.from(document.querySelectorAll('.hunt-action-btn')).map(a => a.textContent.trim());
       return {
         nodeCount: nodes.length,
         hasRationale: !!explainBox,
         eventId,
         provenance,
-        headerTitle
+        headerTitle,
+        chips,
+        actions
       };
     })()`);
     console.log('\n4. Node Selection & Provenance Rationale:');
     console.log('   Selected Node Event ID:', nodeSelection.eventId);
     console.log('   Provenance Pill:', nodeSelection.provenance);
     console.log('   Deterministic Match Rationale Present:', nodeSelection.hasRationale);
+    console.log('   Extracted Entities:', nodeSelection.chips.join(', '));
+    console.log('   Inspector Actions:', nodeSelection.actions.join(' | '));
 
-    // TEST 5: Saved Hunts Drawer (Open, Verify, Close via X button)
+    // TEST 5: Saved Hunts Drawer (Open, Verify, Close via Escape)
+    await evalJson(`(() => {
+      const savedBtn = document.querySelector('.hunt-query-col .hunt-btn-save');
+      if (savedBtn) savedBtn.click();
+      return true;
+    })()`);
+    await new Promise(r => setTimeout(r, 500));
+
     const savedDrawerTest = await evalJson(`(() => {
       const savedBtn = document.querySelector('.hunt-query-col .hunt-btn-save');
-      if (!savedBtn) return { error: 'Saved button not found' };
-      savedBtn.click();
-      const drawer = document.querySelector('.hunt-saved-item-card, .hunt-panel-content');
+      const drawer = document.querySelector('.hunt-modal-card');
+      const items = Array.from(document.querySelectorAll('.hunt-saved-item-card')).map(c => ({
+        title: (c.querySelector('div:first-child span') || c.querySelector('div:first-child strong'))?.textContent?.trim(),
+        hasLoadBtn: !!c.querySelector('button')
+      }));
       return {
-        btnText: savedBtn.textContent.trim(),
-        drawerFound: !!drawer
+        btnText: savedBtn ? savedBtn.textContent.trim() : '',
+        drawerFound: !!drawer,
+        items
       };
     })()`);
     console.log('\n5. Saved Hunts Drawer Open:');
     console.log('   Saved Hunts Button Text:', savedDrawerTest.btnText);
     console.log('   Drawer Rendered:', savedDrawerTest.drawerFound);
+    console.log('   Saved Items Count:', savedDrawerTest.items.length);
+    for (const it of savedDrawerTest.items) {
+      console.log(`     - Notebook: "${it.title}" (LOAD & RUN: ${it.hasLoadBtn})`);
+    }
     await new Promise(r => setTimeout(r, 400));
 
     // Close drawer via Escape key
@@ -332,7 +451,7 @@ async function runStage2Suite() {
     console.log('\n9. Center HUB Back Button Success:');
     console.log('   Back Button returns to Spatial Hub:', backToHubOk);
 
-    // Re-enter Hunting for clean final screenshots
+    // Re-enter Hunting for clean POPULATED screenshots
     await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       const huntNode = nodes.find(n => n.textContent && n.textContent.includes('THREAT HUNTING')) || nodes[2];
@@ -343,24 +462,100 @@ async function runStage2Suite() {
       await new Promise(r => setTimeout(r, 200));
       if (await evalJson(`!!document.querySelector('.threat-hunting-workspace')`)) break;
     }
-    // Select first template for clean baseline screenshot
+    await new Promise(r => setTimeout(r, 800));
+
+    // Select template query that returns results (Repeated Authentication Failures)
+    console.log('[10/12] Selecting hunt template with results & executing query...');
     await evalJson(`(() => {
-      const cards = document.querySelectorAll('.hunt-template-card');
-      if (cards.length > 0) cards[0].click();
+      const cards = Array.from(document.querySelectorAll('.hunt-template-card'));
+      const targetCard = cards.find(c => c.textContent && c.textContent.includes('Authentication Failures')) || cards[1] || cards[0];
+      if (targetCard) targetCard.click();
       return true;
     })()`);
-    await new Promise(r => setTimeout(r, 1200));
 
-    // CAPTURE 1440 AFTER
-    console.log('\n[10/11] Capturing stage2_hunting_after_1440.png...');
+    // Wait for hunt pipeline execution and node rendering
+    let nodesRendered = false;
+    for (let i = 0; i < 25; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      const count = await evalJson(`document.querySelectorAll('.hunt-node').length`);
+      if (count > 0) {
+        nodesRendered = true;
+        console.log(`✓ Hunt executed and rendered ${count} event nodes!`);
+        break;
+      }
+    }
+    if (!nodesRendered) {
+      console.warn('Nodes did not render within timeout, continuing...');
+    }
+
+    // Click node and wait for inspector render
+    await evalJson(`(() => {
+      const nodes = document.querySelectorAll('.hunt-node');
+      if (nodes.length > 0) nodes[0].click();
+      return nodes.length;
+    })()`);
+    await new Promise(r => setTimeout(r, 600));
+
+    // SELECT AN EVENT NODE: populates the graph and inspector!
+    const selectNodeResult = await evalJson(`(() => {
+      const nodes = document.querySelectorAll('.hunt-node');
+      const focused = document.querySelector('.hunt-node.focused');
+      const inspectorHeader = document.querySelector('.hunt-inspector-header')?.textContent?.trim();
+      const eventId = document.querySelector('.inspector-val')?.textContent?.trim();
+      const rationale = document.querySelector('.explain-box')?.textContent?.trim();
+      const chips = Array.from(document.querySelectorAll('.hunt-entity-chip')).map(c => c.textContent.trim());
+
+      const qContent = document.querySelector('.hunt-query-col .hunt-panel-content');
+      const iContent = document.querySelector('.hunt-inspector-col .hunt-panel-content');
+
+      return {
+        nodeCount: nodes.length,
+        hasFocusedNode: !!focused,
+        inspectorHeader,
+        eventId,
+        hasRationale: !!rationale,
+        chipsCount: chips.length,
+        queryScrollOk: qContent ? qContent.scrollWidth <= qContent.clientWidth : true,
+        inspectorScrollOk: iContent ? iContent.scrollWidth <= iContent.clientWidth : true
+      };
+    })()`);
+    console.log('\n[10/12] Populated Graph & Inspector State:');
+    console.log(`   Event Selected: ${selectNodeResult.eventId} (Focused: ${selectNodeResult.hasFocusedNode})`);
+    console.log(`   Inspector Header: ${selectNodeResult.inspectorHeader}`);
+    console.log(`   Match Rationale Present: ${selectNodeResult.hasRationale}`);
+    console.log(`   Extracted Entity Chips: ${selectNodeResult.chipsCount}`);
+    console.log(`   Panel Horizontal Scrolling OK: Query=${selectNodeResult.queryScrollOk}, Inspector=${selectNodeResult.inspectorScrollOk}`);
+
+    // Audit label overlaps at 1440x900
+    const overlaps1440 = await evalJson(`(() => {
+      const labels = Array.from(document.querySelectorAll('.hunt-node-label')).map(l => {
+        const r = l.getBoundingClientRect();
+        return { text: l.textContent, x: r.x, y: r.y, w: r.width, h: r.height };
+      });
+      let overlaps = 0;
+      for (let i = 0; i < labels.length; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+          const a = labels[i];
+          const b = labels[j];
+          const ox = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+          const oy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+          if (ox > 0 && oy > 0) overlaps++;
+        }
+      }
+      return { totalLabels: labels.length, overlaps };
+    })()`);
+    console.log(`   Label Overlaps at 1440x900: ${overlaps1440.overlaps} (Total Nodes: ${overlaps1440.totalLabels})`);
+
+    // CAPTURE 1440 AFTER (POPULATED)
+    console.log('\n[10b/12] Capturing stage2_hunting_after_1440.png (POPULATED VIEW)...');
     const shot1440 = await send('Page.captureScreenshot', { format: 'png' });
     const buf1440 = Buffer.from(shot1440.result.data, 'base64');
     fs.writeFileSync(path.join(ARTIFACT_DIR, 'stage2_hunting_after_1440.png'), buf1440);
     fs.writeFileSync(path.join(DOCS_SCREENSHOTS, 'stage2_hunting_after_1440.png'), buf1440);
-    console.log('✓ Saved stage2_hunting_after_1440.png');
+    console.log(`✓ Saved stage2_hunting_after_1440.png (${buf1440.length} bytes)`);
 
-    // RESIZE TO 1920 AND CAPTURE 1920 AFTER
-    console.log('[11/11] Resizing to 1920x1080 and capturing stage2_hunting_after_1920.png...');
+    // RESIZE TO 1920 AND CAPTURE 1920 AFTER (POPULATED)
+    console.log('\n[11/12] Resizing to 1920x1080 and capturing stage2_hunting_after_1920.png (POPULATED VIEW)...');
     await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
     await new Promise(r => setTimeout(r, 1200));
 
@@ -369,18 +564,24 @@ async function runStage2Suite() {
       const f = document.querySelector('.hunt-field-col')?.getBoundingClientRect();
       const i = document.querySelector('.hunt-inspector-col')?.getBoundingClientRect();
       const t = document.querySelector('.hunt-timeline-col')?.getBoundingClientRect();
+      const qContent = document.querySelector('.hunt-query-col .hunt-panel-content');
+      const iContent = document.querySelector('.hunt-inspector-col .hunt-panel-content');
+
       return {
         queryWidth: Math.round(q.width),
         centerWidth: Math.round(f.width),
         inspectorWidth: Math.round(i.width),
         timelineHeight: Math.round(t.height),
+        queryScrollOk: qContent ? qContent.scrollWidth <= qContent.clientWidth : true,
+        inspectorScrollOk: iContent ? iContent.scrollWidth <= iContent.clientWidth : true
       };
     })()`);
-    console.log('\n10. Responsive Column Layout at 1920x1080:');
-    console.log('   Query Col:', colAudit1920.queryWidth, 'px (spec: 380px)');
-    console.log('   Center Field Col:', colAudit1920.centerWidth, 'px');
-    console.log('   Inspector Col:', colAudit1920.inspectorWidth, 'px (spec: 450px)');
-    console.log('   Timeline Row Height:', colAudit1920.timelineHeight, 'px (spec: 104px)');
+    console.log('   Responsive Column Layout at 1920x1080:');
+    console.log('     Query Col:', colAudit1920.queryWidth, 'px (spec: 380px)');
+    console.log('     Center Field Col:', colAudit1920.centerWidth, 'px');
+    console.log('     Inspector Col:', colAudit1920.inspectorWidth, 'px (spec: 450px)');
+    console.log('     Timeline Row Height:', colAudit1920.timelineHeight, 'px (spec: 104px)');
+    console.log(`     Scrolling Checks: Query=${colAudit1920.queryScrollOk}, Inspector=${colAudit1920.inspectorScrollOk}`);
 
     const labelAudit1920 = await evalJson(`(() => {
       const labels = Array.from(document.querySelectorAll('.hunt-node-label')).map(l => {
@@ -405,7 +606,72 @@ async function runStage2Suite() {
     const buf1920 = Buffer.from(shot1920.result.data, 'base64');
     fs.writeFileSync(path.join(ARTIFACT_DIR, 'stage2_hunting_after_1920.png'), buf1920);
     fs.writeFileSync(path.join(DOCS_SCREENSHOTS, 'stage2_hunting_after_1920.png'), buf1920);
-    console.log('✓ Saved stage2_hunting_after_1920.png');
+    console.log(`✓ Saved stage2_hunting_after_1920.png (${buf1920.length} bytes)`);
+
+    // Capture IndexedDB AFTER verification
+    console.log('\n[12/12] Capturing IndexedDB "es-spatial-db" state AFTER verification...');
+    const dbAfter = await evalAsyncJson(readIdbExpr);
+
+    console.log('\n================ STORED DATA INTEGRITY COMPARISON ================');
+    const storeNames = Array.from(new Set([...Object.keys(dbBefore), ...Object.keys(dbAfter)])).filter(s => !s.startsWith('__')).sort();
+    
+    let allMatched = true;
+    const diffs = [];
+    const comparisonTable = [];
+
+    for (const store of storeNames) {
+      const bCount = dbBefore[store]?.count ?? 'MISSING';
+      const aCount = dbAfter[store]?.count ?? 'MISSING';
+      const bKeys = (dbBefore[store]?.keys || []).slice().sort().join(',');
+      const aKeys = (dbAfter[store]?.keys || []).slice().sort().join(',');
+      const matched = (bCount === aCount) && (bKeys === aKeys);
+
+      comparisonTable.push({
+        store,
+        beforeCount: bCount,
+        afterCount: aCount,
+        status: matched ? 'MATCH' : 'DIFF',
+        sampleKeys: (dbAfter[store]?.keys || []).slice(0, 3).join(', ')
+      });
+
+      if (!matched) {
+        allMatched = false;
+        diffs.push({ store, bCount, aCount });
+      }
+    }
+
+    console.table(comparisonTable);
+
+    console.log(`\nData Integrity Verdict: ${allMatched ? 'PERFECT PRESERVATION (All stores identical, 0 cleared, 0 reseeded)' : 'DISCREPANCIES DETECTED'}`);
+    if (!allMatched) {
+      console.error('Differences:', diffs);
+    }
+
+    // Write full report for docs/work-log.md
+    const reportData = {
+      timestamp: new Date().toISOString(),
+      allMatched,
+      diffCount: diffs.length,
+      comparisonTable,
+      layout1440: {
+        colAudit: colAudit1440,
+        selectedNode: selectNodeResult,
+        labelOverlaps: overlaps1440.overlaps
+      },
+      layout1920: {
+        colAudit: colAudit1920,
+        labelOverlaps: labelAudit1920.overlaps
+      },
+      savedHuntsDrawer: savedDrawerTest,
+      escapeTests: {
+        escLevel1_drilldown: escLevel1,
+        escLevel2_deselectNode: escLevel2,
+        escLevel3_exitToHub: escLevel3,
+        hubBackBtn: backToHubOk
+      }
+    };
+    fs.writeFileSync('/tmp/stage2-verification-report.json', JSON.stringify(reportData, null, 2));
+    console.log('✓ Saved structured report to /tmp/stage2-verification-report.json');
 
     console.log('\n====================================================');
     console.log('ALL VERIFICATION & CAPTURE SUITES COMPLETED CLEANLY! ✓');

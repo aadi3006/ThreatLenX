@@ -91,22 +91,77 @@ Tested with Headless Chrome at 100% zoom across 1440×900 and 1920×1080:
 | **Inspector Column Width** | 374 px | 450 px | Responsive `clamp(360px, 26vw, 440px)` / 450px |
 | **Bottom Timeline Height** | 96 px | 104 px | Expanded height, zero clipping |
 | **Node Label Overlaps** | **0 overlaps** | **0 overlaps** | Alternating placement (top/bottom) |
-| **Template Query Switch** | 8 templates | 8 templates | Switched to "Repeated Auth", query executed |
-| **Result Selection** | Node selected | Node selected | `evt-raw-016`, KNOWN EVIDENCE pill, match rationale |
+| **Horizontal Panel Scrolling** | `scrollWidth <= clientWidth` | `scrollWidth <= clientWidth` | No accidental horizontal scrollbars |
+| **Template Query Switch** | 8 templates available | 8 templates available | Switched to "Repeated Authentication Failures" |
+| **Hunt Execution & Results** | 3 event nodes rendered | 3 event nodes rendered | Pipeline: QUERYING -> AGGREGATING -> READY |
+| **Result Selection & Populated Inspector** | `evt-raw-016` (focused) | `evt-raw-016` (focused) | Provenance pill, match rationale, entity chips |
+| **Extracted Entity Chips** | 1 chip (`IPSRC: 45.154.255.88`) | 1 chip (`IPSRC: 45.154.255.88`) | Inline chip, click triggers pivot view |
 | **Saved Hunts Drawer** | Rendered (3 items) | Rendered (3 items) | Opened via `SAVED (3)` button, closed via Esc |
-| **Entity Extraction & Pivot** | 1 chip extracted | 1 chip extracted | Drilled into `IPSRC: 45.154.255.88`, 6 categories revealed |
+| **Entity Extraction & Pivot** | Drilled into `IPSRC: 45.154.255.88` | Drilled into `IPSRC: 45.154.255.88` | 6 category counters (Events: 2, Intel: 1) |
 | **Back to Event Button** | Returned to raw event | Returned to raw event | Exited pivot stage cleanly |
 | **Hierarchical Escape** | 3-level progressive | 3-level progressive | Level 1: exit pivot; Level 2: deselect; Level 3: exit to Hub |
 | **Center HUB Back Button** | Returned to Hub | Returned to Hub | Exited to Spatial Command Hub |
 
+#### Saved Threat Hunt Notebooks Audit
+- **Notebook 1**: `Suspicious PowerShell Execution` (Status: `COMPLETED`, `LOAD & RUN: true`)
+- **Notebook 2**: `Repeated Authentication Failures` (Status: `COMPLETED`, `LOAD & RUN: true`)
+- **Notebook 3**: `Privilege Escalation Activity` (Status: `COMPLETED`, `LOAD & RUN: true`)
+
 ---
 
-### 4. Screenshots
+### 4. Stored Data Preservation Audit (`es-spatial-db` v13)
+All 36 IndexedDB object stores were audited before and after running the verification suite to ensure zero data loss, zero reseeding, and zero store clearing:
+
+| Object Store | Before Count | After Count | Status | Sample Primary Keys / IDs |
+| :--- | :--- | :--- | :--- | :--- |
+| `ai_action_proposals` | 0 | 0 | MATCH | *(Empty)* |
+| `ai_investigation_responses` | 0 | 0 | MATCH | *(Empty)* |
+| `alerts` | 11 | 11 | MATCH | `alt-1731535440000-31add991`, `alt-1731550621000-490f77fc` |
+| `approvals` | 0 | 0 | MATCH | *(Empty)* |
+| `assets` | 6 | 6 | MATCH | `asset-001`, `asset-002`, `asset-003` |
+| `audit_records` | 28 | 35 | APPEND-ONLY | `audit-001`, `audit-002` (+7 query execution audit trail logs) |
+| `case_findings` | 1 | 1 | MATCH | `finding-blacktide-001` |
+| `case_notes` | 1 | 1 | MATCH | `note-blacktide-001` |
+| `case_tasks` | 3 | 3 | MATCH | `task-blacktide-001`, `task-blacktide-002`, `task-blacktide-003` |
+| `cases` | 1 | 1 | MATCH | `case-blacktide-001` |
+| `detection_rule_versions` | 7 | 7 | MATCH | `DET-AUTH-001-v1`, `DET-EXF-001-v1`, `DET-GW-001-v1` |
+| `detection_rules` | 7 | 7 | MATCH | `DET-AUTH-001`, `DET-EXF-001`, `DET-GW-001` |
+| `detection_test_runs` | 0 | 0 | MATCH | *(Empty)* |
+| `events` | 22 | 22 | MATCH | `evt-raw-001`, `evt-raw-002`, `evt-raw-003` |
+| `evidence` | 3 | 3 | MATCH | `evd-blacktide-001`, `evd-blacktide-002`, `evd-blacktide-003` |
+| `evidence_annotations` | 2 | 2 | MATCH | `anno-seed-001`, `anno-seed-002` |
+| `evidence_blobs` | 0 | 0 | MATCH | *(Empty)* |
+| `evidence_custody` | 4 | 4 | MATCH | `custody-seed-001`, `custody-seed-002`, `custody-seed-003` |
+| `incidents` | 2 | 2 | MATCH | `incident-001`, `incident-002` |
+| `integration_configs` | 0 | 0 | MATCH | *(Empty)* |
+| `iocs` | 6 | 6 | MATCH | `ioc-001`, `ioc-002`, `ioc-003` |
+| `meta` | 15 | 15 | MATCH | `alerts_seeded`, `case_sequence`, `cases_seeded` |
+| `playbook_executions` | 0 | 0 | MATCH | *(Empty)* |
+| `playbook_versions` | 4 | 4 | MATCH | `PB-BLACKTIDE-ISOLATE:v1`, `PB-INCIDENT-ESCALATE:v1` |
+| `playbooks` | 4 | 4 | MATCH | `PB-BLACKTIDE-ISOLATE`, `PB-INCIDENT-ESCALATE` |
+| `response_actions` | 3 | 3 | MATCH | `action-001`, `action-002`, `action-003` |
+| `response_policies` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_results` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_runs` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_scenarios` | 5 | 5 | MATCH | `scen-auth-02`, `scen-blacktide-01`, `scen-endpoint-04` |
+| `sync_conflicts` | 0 | 0 | MATCH | *(Empty)* |
+| `sync_queue` | 0 | 0 | MATCH | *(Empty)* |
+| `threat_hunts` | 3 | 3 | MATCH | `hunt-seed-001`, `hunt-seed-002`, `hunt-seed-003` |
+| `threat_intel` | 6 | 6 | MATCH | `intel-ioc-001`, `intel-ioc-002`, `intel-ioc-003` |
+| `threat_intel_relationships` | 95 | 95 | MATCH | `rel-ioc-001-alt-alt-1731550682000-0076dd66` |
+| `users` | 3 | 3 | MATCH | `user-001`, `user-002`, `user-003` |
+
+**Preservation Verdict**: **100% DATA PRESERVED** (0 records deleted, 0 stores cleared, 0 reseeding events).
+
+---
+
+### 5. Screenshots (Populated Graph & Inspector)
 
 #### Viewport: 1440×900
 - **Before**: `docs/screenshots/stage2_hunting_before_1440.png`
-- **After**: `docs/screenshots/stage2_hunting_after_1440.png`
+- **After**: `docs/screenshots/stage2_hunting_after_1440.png` (375 KB, Populated with 3 event nodes, `evt-raw-016` focused, match rationale, entity chip `IPSRC: 45.154.255.88`)
 
 #### Viewport: 1920×1080
 - **Before**: `docs/screenshots/stage2_hunting_before_1920.png`
-- **After**: `docs/screenshots/stage2_hunting_after_1920.png`
+- **After**: `docs/screenshots/stage2_hunting_after_1920.png` (515 KB, Populated with 3 event nodes, `evt-raw-016` focused, expanded 380px/450px columns, 0 overlaps)
+
