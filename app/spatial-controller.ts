@@ -51,6 +51,10 @@ export class SpatialInteractionController {
 
   private attachKeyboard(): void {
     this.keydownListener = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) {
+        return;
+      }
+
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
@@ -87,11 +91,15 @@ export class SpatialInteractionController {
           socNavStore.goToWorkspace('DETECTION');
           break;
 
-        case 'escape':
+        case 'escape': {
+          if (socNavStore.getState().workspace === 'HUNTING') {
+            break;
+          }
           e.preventDefault();
           cyberAudio.playClick();
           socNavStore.navigateBack();
           break;
+        }
 
         case '1':
         case '2':

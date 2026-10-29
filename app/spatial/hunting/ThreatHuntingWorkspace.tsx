@@ -927,7 +927,58 @@ export default function ThreatHuntingWorkspace({
   // ─── GESTURES & KEYBOARD CONVERGENCE ──────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showSaveModal || showLinkModal || showCreateModal || threatIntelTargetId) return;
+      const target = e.target as HTMLElement | null;
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      // Hierarchical Escape navigation
+      if (e.key === 'Escape') {
+        // Level 1: Open Modals and Drawers
+        if (showSaveModal || showLinkModal || showCreateModal || showSavedHuntsDrawer || threatIntelTargetId || isAiOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (showSaveModal) setShowSaveModal(false);
+          else if (showLinkModal) setShowLinkModal(false);
+          else if (showCreateModal) setShowCreateModal(false);
+          else if (showSavedHuntsDrawer) setShowSavedHuntsDrawer(false);
+          else if (threatIntelTargetId) setThreatIntelTargetId(null);
+          else if (isAiOpen) setIsAiOpen(false);
+          cyberAudio.playClick();
+          return;
+        }
+
+        // Level 2: Entity Pivot Drilldown
+        if (activePivotEntity) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          setActivePivotEntity(null);
+          setFocusedPivotItem(null);
+          cyberAudio.playClick();
+          return;
+        }
+
+        // Level 3: Result Focus / Selection
+        if (selectedResult) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          setSelectedResult(null);
+          cyberAudio.playClick();
+          return;
+        }
+
+        // Level 4: Return to Spatial Command Hub
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        cyberAudio.playClick();
+        onClose();
+        return;
+      }
+
+      if (isInput) return;
+      if (showSaveModal || showLinkModal || showCreateModal || showSavedHuntsDrawer || threatIntelTargetId || isAiOpen) return;
 
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         if (activePivotEntity && pivotRelationships) {
@@ -994,12 +1045,6 @@ export default function ThreatHuntingWorkspace({
             executePivot({ type: 'HUNT', value: focusedPivotItem?.title || activePivotEntity.value });
           }
         }
-      } else if (e.key === 'Escape') {
-        if (activePivotEntity) {
-          setActivePivotEntity(null);
-          setFocusedPivotItem(null);
-          cyberAudio.playClick();
-        }
       }
     };
 
@@ -1013,11 +1058,11 @@ export default function ThreatHuntingWorkspace({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('spatial-gesture-navigate' as any, handleSpatialGesture as any);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('spatial-gesture-navigate' as any, handleSpatialGesture as any);
     };
   }, [
@@ -1026,10 +1071,13 @@ export default function ThreatHuntingWorkspace({
     activePivotCategory,
     focusedPivotItem,
     extractedEntities,
+    selectedResult,
     showSaveModal,
     showLinkModal,
     showCreateModal,
+    showSavedHuntsDrawer,
     threatIntelTargetId,
+    isAiOpen,
     executePivot,
     onClose,
   ]);
@@ -1042,9 +1090,9 @@ export default function ThreatHuntingWorkspace({
 
     return slice.map((res, idx) => {
       // Deterministic layout hash based on index and event properties
-      const angle = (idx / Math.max(1, slice.length)) * 2 * Math.PI + (idx % 2 === 0 ? 0.2 : -0.2);
-      const radiusX = 18 + ((idx % 3) + 1) * 9;
-      const radiusY = 14 + ((idx % 3) + 1) * 7;
+      const angle = (idx / Math.max(1, slice.length)) * 2 * Math.PI + (idx % 2 === 0 ? 0.25 : -0.25);
+      const radiusX = 18 + ((idx % 4) + 1) * 7.5;
+      const radiusY = 14 + ((idx % 4) + 1) * 6;
       const posX = 50 + Math.cos(angle) * radiusX;
       const posY = 50 + Math.sin(angle) * radiusY;
 
@@ -1061,9 +1109,10 @@ export default function ThreatHuntingWorkspace({
 
       return {
         ...res,
-        posX: Math.max(16, Math.min(84, Math.round(posX * 10) / 10)),
-        posY: Math.max(16, Math.min(82, Math.round(posY * 10) / 10)),
+        posX: Math.max(12, Math.min(88, Math.round(posX * 10) / 10)),
+        posY: Math.max(14, Math.min(84, Math.round(posY * 10) / 10)),
         color,
+        labelPlacement: idx % 2 === 0 ? 'label-bottom' : 'label-top',
       };
     });
   }, [executionResult, perfMode]);
@@ -1242,6 +1291,14 @@ export default function ThreatHuntingWorkspace({
               UNKNOWN: {executionResult?.aggregations.unknownCount ?? 0}
             </span>
             <button
+              className="hunt-back-btn"
+              onClick={onClose}
+              title="Return to Spatial Command Hub (Esc)"
+            >
+              <ArrowLeft size={11} />
+              <span>HUB</span>
+            </button>
+            <button
               className="hunt-close-btn"
               onClick={onClose}
               title="Return to SOC Spatial Canvas"
@@ -1315,7 +1372,7 @@ export default function ThreatHuntingWorkspace({
                     <Zap size={13} color={node.color} />
                   )}
                 </span>
-                <span className="hunt-node-label" title={node.eventType}>
+                <span className={`hunt-node-label ${node.labelPlacement}`} title={node.eventType}>
                   {node.eventType}
                 </span>
               </div>
@@ -1334,40 +1391,44 @@ export default function ThreatHuntingWorkspace({
 
       {/* ─── RIGHT PANEL: Hunt Inspector ─── */}
       <aside className="hunt-panel hunt-inspector-col">
-        <header className="hunt-panel-header">
+        <header className="hunt-panel-header hunt-inspector-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Shield size={14} color="#00f0ff" />
             <span>HUNT INSPECTOR</span>
           </div>
 
-          {selectedResult && (
-            <span className={`provenance-pill ${selectedResult.isKnown ? 'known' : 'unknown'}`}>
-              {selectedResult.isKnown ? 'KNOWN EVIDENCE' : 'UNKNOWN NOVEL'}
-            </span>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {selectedResult && (
+              <span className={`provenance-pill ${selectedResult.isKnown ? 'known' : 'unknown'}`}>
+                {selectedResult.isKnown ? 'KNOWN EVIDENCE' : 'UNKNOWN NOVEL'}
+              </span>
+            )}
 
-          <button
-            className="hunt-action-btn"
-            style={{
-              borderColor: isAiOpen ? '#00f0ff' : 'rgba(0, 240, 255, 0.4)',
-              color: '#00f0ff',
-              background: isAiOpen ? 'rgba(0, 240, 255, 0.2)' : 'rgba(0, 240, 255, 0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '2px 8px',
-              fontSize: '9px',
-              marginLeft: 'auto',
-            }}
-            onClick={() => {
-              cyberAudio.playClick();
-              setIsAiOpen((prev) => !prev);
-            }}
-            title="Toggle Contextual AI Hunt Result Summary"
-          >
-            <Brain size={11} />
-            <span>AI SUMMARY</span>
-          </button>
+            <button
+              className="hunt-action-btn"
+              style={{
+                borderColor: isAiOpen ? '#00f0ff' : 'rgba(0, 240, 255, 0.4)',
+                color: '#00f0ff',
+                background: isAiOpen ? 'rgba(0, 240, 255, 0.2)' : 'rgba(0, 240, 255, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                fontSize: '9px',
+                borderRadius: '3px',
+                border: '1px solid',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                cyberAudio.playClick();
+                setIsAiOpen((prev) => !prev);
+              }}
+              title="Toggle Contextual AI Hunt Result Summary"
+            >
+              <Brain size={11} />
+              <span>AI SUMMARY</span>
+            </button>
+          </div>
         </header>
 
         <div className="hunt-panel-content">
@@ -2047,6 +2108,104 @@ export default function ThreatHuntingWorkspace({
         isOpen={isAiOpen}
         onClose={() => setIsAiOpen(false)}
       />
+
+      {/* ─── MODAL: Saved Hunts Notebook Drawer ─── */}
+      {showSavedHuntsDrawer && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setShowSavedHuntsDrawer(false)}
+        >
+          <div
+            className="hunt-panel"
+            style={{
+              width: 520,
+              maxWidth: '92vw',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="hunt-panel-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Bookmark size={13} color="#3dffb0" />
+                <span>SAVED THREAT HUNTS ({savedHunts.length})</span>
+              </div>
+              <button
+                className="hunt-close-btn"
+                onClick={() => setShowSavedHuntsDrawer(false)}
+                title="Close Saved Hunts (Esc)"
+              >
+                <X size={14} />
+              </button>
+            </header>
+            <div className="hunt-panel-content" style={{ padding: 12 }}>
+              {savedHunts.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#64748b', padding: '30px 10px' }}>
+                  <Bookmark size={28} style={{ margin: '0 auto 8px auto', display: 'block', color: 'rgba(61, 255, 176, 0.4)' }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>NO SAVED HUNTS RECORDED</div>
+                  <div style={{ fontSize: 9, marginTop: 4 }}>Run any threat hunt query and click SAVE to record an investigation notebook.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {savedHunts.map((hunt) => (
+                    <div key={hunt.id} className="hunt-saved-item-card">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#e0f2fe' }}>{hunt.name}</span>
+                        <span style={{ fontSize: 8, color: '#3dffb0', background: 'rgba(61, 255, 176, 0.12)', padding: '1px 5px', borderRadius: 2 }}>
+                          {hunt.status || 'SAVED'}
+                        </span>
+                      </div>
+                      {hunt.notes && (
+                        <div style={{ fontSize: 8.5, color: '#94a3b8', marginBottom: 6, fontStyle: 'italic' }}>
+                          "{hunt.notes}"
+                        </div>
+                      )}
+                      <div style={{ fontSize: 8, color: '#64748b', display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <span>Created: {new Date(hunt.createdAt).toLocaleDateString()}</span>
+                        {hunt.query.categories && <span>Category: {hunt.query.categories.join(', ')}</span>}
+                        {hunt.query.severities && <span>Severity: {hunt.query.severities.join(', ')}</span>}
+                        {hunt.query.processes && <span>Process: {hunt.query.processes.join(', ')}</span>}
+                        {hunt.query.text && <span>Query: "{hunt.query.text}"</span>}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                        <button
+                          className="hunt-btn-run"
+                          style={{ padding: '3px 8px', fontSize: 9 }}
+                          onClick={() => {
+                            setSelectedTemplateId(null);
+                            setSelectedCategory(hunt.query.categories?.[0] ?? '');
+                            setSelectedSeverity(hunt.query.severities?.[0] ?? '');
+                            setProcessFilter(hunt.query.processes?.[0] ?? '');
+                            setIpFilter(hunt.query.sourceIps?.[0] ?? hunt.query.destinationIps?.[0] ?? '');
+                            setTextSearch(hunt.query.text ?? '');
+                            setStartTime(hunt.query.startTime ?? '');
+                            setEndTime(hunt.query.endTime ?? '');
+                            setShowSavedHuntsDrawer(false);
+                            handleRunHunt(hunt.query);
+                            setStatusNotice(`Loaded saved hunt "${hunt.name}"`);
+                          }}
+                        >
+                          <Play size={10} />
+                          <span>LOAD & RUN</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
