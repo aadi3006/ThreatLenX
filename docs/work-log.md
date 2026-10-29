@@ -96,16 +96,18 @@ Tested with Headless Chrome at 100% zoom across 1440×900 and 1920×1080:
 | **Hunt Execution & Results** | 3 event nodes rendered | 3 event nodes rendered | Pipeline: QUERYING -> AGGREGATING -> READY |
 | **Result Selection & Populated Inspector** | `evt-raw-016` (focused) | `evt-raw-016` (focused) | Provenance pill, match rationale, entity chips |
 | **Extracted Entity Chips** | 1 chip (`IPSRC: 45.154.255.88`) | 1 chip (`IPSRC: 45.154.255.88`) | Inline chip, click triggers pivot view |
-| **Saved Hunts Drawer** | Rendered (3 items) | Rendered (3 items) | Opened via `SAVED (3)` button, closed via Esc |
+| **Saved Hunts Drawer** | Rendered (3 items) | Rendered (3 items) | Modal header asserted (`SAVED THREAT HUNTS`), 3 notebooks with LOAD & RUN buttons, closed via Esc |
 | **Entity Extraction & Pivot** | Drilled into `IPSRC: 45.154.255.88` | Drilled into `IPSRC: 45.154.255.88` | 6 category counters (Events: 2, Intel: 1) |
 | **Back to Event Button** | Returned to raw event | Returned to raw event | Exited pivot stage cleanly |
 | **Hierarchical Escape** | 3-level progressive | 3-level progressive | Level 1: exit pivot; Level 2: deselect; Level 3: exit to Hub |
 | **Center HUB Back Button** | Returned to Hub | Returned to Hub | Exited to Spatial Command Hub |
 
 #### Saved Threat Hunt Notebooks Audit
-- **Notebook 1**: `Suspicious PowerShell Execution` (Status: `COMPLETED`, `LOAD & RUN: true`)
-- **Notebook 2**: `Repeated Authentication Failures` (Status: `COMPLETED`, `LOAD & RUN: true`)
-- **Notebook 3**: `Privilege Escalation Activity` (Status: `COMPLETED`, `LOAD & RUN: true`)
+The interaction test asserts the dedicated modal drawer container (`.hunt-panel-header` containing `SAVED THREAT HUNTS (3)` and `.hunt-close-btn`), asserting exactly three notebooks with active execution controls:
+- **Notebook 1**: `Suspicious PowerShell Execution` (Status: `COMPLETED`, `LOAD & RUN` button verified)
+- **Notebook 2**: `Repeated Authentication Failures` (Status: `COMPLETED`, `LOAD & RUN` button verified)
+- **Notebook 3**: `Privilege Escalation Activity` (Status: `COMPLETED`, `LOAD & RUN` button verified)
+- **Escape Key Closure**: Verified drawer unmounts completely from DOM on Escape (0 modal cards, 0 modal headers remaining).
 
 ---
 

@@ -315,41 +315,110 @@ async function runStage2Suite() {
     console.log('   Extracted Entities:', nodeSelection.chips.join(', '));
     console.log('   Inspector Actions:', nodeSelection.actions.join(' | '));
 
-    // TEST 5: Saved Hunts Drawer (Open, Verify, Close via Escape)
-    await evalJson(`(() => {
+    // TEST 5: Saved Hunts Drawer (Open, Wait for Drawer, Assert 3 Notebooks & LOAD/RUN, Close via Escape)
+    console.log('\n5. Saved Hunts Drawer Verification:');
+    const clickSavedBtn = await evalJson(`(() => {
       const savedBtn = document.querySelector('.hunt-query-col .hunt-btn-save');
-      if (savedBtn) savedBtn.click();
-      return true;
+      if (!savedBtn) return { error: 'Saved button not found in query column' };
+      const btnText = savedBtn.textContent.trim();
+      savedBtn.click();
+      return { success: true, btnText };
     })()`);
-    await new Promise(r => setTimeout(r, 500));
-
-    const savedDrawerTest = await evalJson(`(() => {
-      const savedBtn = document.querySelector('.hunt-query-col .hunt-btn-save');
-      const drawer = document.querySelector('.hunt-modal-card');
-      const items = Array.from(document.querySelectorAll('.hunt-saved-item-card')).map(c => ({
-        title: (c.querySelector('div:first-child span') || c.querySelector('div:first-child strong'))?.textContent?.trim(),
-        hasLoadBtn: !!c.querySelector('button')
-      }));
-      return {
-        btnText: savedBtn ? savedBtn.textContent.trim() : '',
-        drawerFound: !!drawer,
-        items
-      };
-    })()`);
-    console.log('\n5. Saved Hunts Drawer Open:');
-    console.log('   Saved Hunts Button Text:', savedDrawerTest.btnText);
-    console.log('   Drawer Rendered:', savedDrawerTest.drawerFound);
-    console.log('   Saved Items Count:', savedDrawerTest.items.length);
-    for (const it of savedDrawerTest.items) {
-      console.log(`     - Notebook: "${it.title}" (LOAD & RUN: ${it.hasLoadBtn})`);
+    if (clickSavedBtn.error) {
+      throw new Error(clickSavedBtn.error);
     }
-    await new Promise(r => setTimeout(r, 400));
+    console.log('   Saved Hunts Button Text:', clickSavedBtn.btnText);
 
-    // Close drawer via Escape key
+    // Wait for the actual drawer modal to mount (NOT generic panel content)
+    let drawerMounted = false;
+    let savedDrawerReport = null;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 150));
+      savedDrawerReport = await evalJson(`(() => {
+        // Assert the dedicated modal header and close button exist
+        const headers = Array.from(document.querySelectorAll('.hunt-panel-header'));
+        const modalHeader = headers.find(h => h.textContent && h.textContent.includes('SAVED THREAT HUNTS'));
+        const closeBtn = document.querySelector('.hunt-close-btn');
+        const cards = Array.from(document.querySelectorAll('.hunt-saved-item-card'));
+        
+        if (!modalHeader || !closeBtn) {
+          return { mounted: false };
+        }
+
+        const items = cards.map(c => {
+          const title = c.querySelector('div:first-child span')?.textContent?.trim() || '';
+          const status = c.querySelector('div:first-child span:nth-child(2)')?.textContent?.trim() || '';
+          const loadBtn = Array.from(c.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('LOAD & RUN'));
+          return {
+            title,
+            status,
+            hasLoadBtn: !!loadBtn,
+            btnText: loadBtn ? loadBtn.textContent.trim() : ''
+          };
+        });
+
+        return {
+          mounted: true,
+          headerText: modalHeader.textContent.trim(),
+          hasCloseBtn: !!closeBtn,
+          cardCount: cards.length,
+          items
+        };
+      })()`);
+
+      if (savedDrawerReport && savedDrawerReport.mounted && savedDrawerReport.cardCount === 3) {
+        drawerMounted = true;
+        break;
+      }
+    }
+
+    if (!drawerMounted || !savedDrawerReport) {
+      throw new Error(`Saved hunts drawer failed to mount with 3 notebooks. Audit: ${JSON.stringify(savedDrawerReport)}`);
+    }
+
+    console.log('   Actual Drawer Modal Mounted:', savedDrawerReport.mounted, `("${savedDrawerReport.headerText}")`);
+    console.log('   Saved Items Count (Asserted exactly 3):', savedDrawerReport.cardCount);
+
+    // Assert exactly 3 notebooks
+    if (savedDrawerReport.items.length !== 3) {
+      throw new Error(`Expected exactly 3 saved notebooks, but found ${savedDrawerReport.items.length}`);
+    }
+
+    // Assert each notebook has a valid LOAD & RUN button
+    for (const it of savedDrawerReport.items) {
+      if (!it.hasLoadBtn) {
+        throw new Error(`Notebook "${it.title}" is missing its LOAD & RUN button!`);
+      }
+      console.log(`     - Notebook: "${it.title}" [${it.status}] (LOAD & RUN: ${it.hasLoadBtn}, label: "${it.btnText}")`);
+    }
+
+    // Verify Escape key closes the actual drawer
     await evalJson(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }))`);
-    await new Promise(r => setTimeout(r, 400));
-    const drawerClosed = await evalJson(`!document.querySelector('.hunt-saved-item-card')`);
+    
+    let drawerClosed = false;
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      drawerClosed = await evalJson(`(() => {
+        const headers = Array.from(document.querySelectorAll('.hunt-panel-header'));
+        const modalHeader = headers.find(h => h.textContent && h.textContent.includes('SAVED THREAT HUNTS'));
+        const hasCards = document.querySelectorAll('.hunt-saved-item-card').length > 0;
+        return !modalHeader && !hasCards;
+      })()`);
+      if (drawerClosed) break;
+    }
+
+    if (!drawerClosed) {
+      throw new Error('Saved hunts drawer did not close cleanly on Escape key!');
+    }
     console.log('   Saved Hunts Drawer Closed cleanly via Escape:', drawerClosed);
+
+    const savedDrawerTest = {
+      btnText: clickSavedBtn.btnText,
+      drawerFound: true,
+      headerText: savedDrawerReport.headerText,
+      items: savedDrawerReport.items,
+      closedViaEscape: drawerClosed
+    };
 
     // Re-select first node to ensure clean entity chips focus
     await evalJson(`(() => {
