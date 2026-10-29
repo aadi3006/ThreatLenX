@@ -36,6 +36,7 @@ import { securityService } from '../../core/security-service';
 import { ThreatIntelProfile } from '../intel/ThreatIntelProfile';
 import { cyberAudio } from '../../cyber-audio';
 import {
+  ArrowLeft,
   Briefcase,
   FolderPlus,
   Shield,
@@ -233,6 +234,53 @@ export default function CaseWorkspace({
     }
   }, [activeCaseId, loadCaseDetails]);
 
+  // Hierarchical Escape key handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.code === 'Escape') {
+        // Level 1: Close active threat intel modal
+        if (selectedIntelIocId) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          cyberAudio.playClick();
+          setSelectedIntelIocId(null);
+          return;
+        }
+
+        // Level 2: Close open action modals
+        if (showCreateModal || showFindingModal || showResolveModal || showCloseModal) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          cyberAudio.playClick();
+          setShowCreateModal(false);
+          setShowFindingModal(false);
+          setShowResolveModal(false);
+          setShowCloseModal(false);
+          return;
+        }
+
+        // Level 3: Return to Hub
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        cyberAudio.playClick();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [
+    selectedIntelIocId,
+    showCreateModal,
+    showFindingModal,
+    showResolveModal,
+    showCloseModal,
+    onClose,
+  ]);
+
   const showToast = (msg: string) => {
     setStatusNotice(msg);
     setTimeout(() => setStatusNotice(null), 3500);
@@ -426,7 +474,19 @@ export default function CaseWorkspace({
       {/* ─── TOP BAR ──────────────────────────────────────────────────────── */}
       <div className="case-top-bar">
         <div className="case-top-left">
-          <Briefcase size={16} color="#00f0ff" />
+          <button
+            className="case-back-btn"
+            onClick={() => {
+              cyberAudio.playClick();
+              onClose();
+            }}
+            title="Return to Spatial Command Hub (Esc)"
+          >
+            <ArrowLeft size={13} />
+            <span>HUB</span>
+          </button>
+
+          <Briefcase size={16} color="#00f0ff" style={{ flexShrink: 0 }} />
 
           {/* Case Selector Dropdown */}
           <select
@@ -436,10 +496,11 @@ export default function CaseWorkspace({
               cyberAudio.playSelect();
               setSelectedCaseId(e.target.value);
             }}
+            title={activeCase ? `${activeCase.caseNumber} — ${activeCase.title}` : 'Select Case'}
           >
             {cases.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.caseNumber} — {c.title.slice(0, 36)} ({c.status})
+              <option key={c.id} value={c.id} title={c.title}>
+                {c.caseNumber} — {c.title.length > 26 ? c.title.slice(0, 24) + '…' : c.title} ({c.status})
               </option>
             ))}
           </select>
@@ -466,7 +527,7 @@ export default function CaseWorkspace({
               <span className={`badge-priority pri-${activeCase.priority.toLowerCase()}`}>
                 PRI: {activeCase.priority}
               </span>
-              <span style={{ fontSize: 10, color: '#94a3b8' }}>
+              <span className="case-owner-label">
                 OWNER: <strong style={{ color: '#3dffb0' }}>{activeCase.ownerId ?? 'UNASSIGNED'}</strong>
               </span>
             </>
@@ -675,7 +736,7 @@ export default function CaseWorkspace({
               setCenterTab('FINDINGS');
             }}
           >
-            INVESTIGATION FINDINGS ({findings.length})
+            FINDINGS ({findings.length})
           </button>
           <button
             className={`center-tab-btn ${centerTab === 'EVIDENCE' ? 'active' : ''}`}
@@ -684,7 +745,7 @@ export default function CaseWorkspace({
               setCenterTab('EVIDENCE');
             }}
           >
-            EVIDENCE VAULT ({caseEvidence.length})
+            EVIDENCE ({caseEvidence.length})
           </button>
           <button
             className={`center-tab-btn ${centerTab === 'RELATIONSHIPS' ? 'active' : ''}`}
@@ -693,11 +754,11 @@ export default function CaseWorkspace({
               setCenterTab('RELATIONSHIPS');
             }}
           >
-            SPATIAL HIERARCHY TREE
+            RELATIONSHIPS
           </button>
           <button
             className="case-btn case-btn-sm"
-            style={{ marginLeft: 'auto', alignSelf: 'center' }}
+            style={{ marginLeft: 'auto', alignSelf: 'center', flexShrink: 0 }}
             onClick={() => {
               cyberAudio.playClick();
               setShowFindingModal(true);

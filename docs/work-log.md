@@ -167,3 +167,173 @@ All 36 IndexedDB object stores were audited before and after running the verific
 - **Before**: `docs/screenshots/stage2_hunting_before_1920.png`
 - **After**: `docs/screenshots/stage2_hunting_after_1920.png` (515 KB, Populated with 3 event nodes, `evt-raw-016` focused, expanded 380px/450px columns, 0 overlaps)
 
+---
+
+## Stage 3: Spatial Case Management Operating Environment Refinement
+
+### 1. Task Objective & Prompt
+- **User Request**: Start ThreatLenX Stage 3: Case Management layout corrections in `/Users/aadibondre/Document/explainsec-AR/explainsec-AR`.
+  - Inspect first, then fix:
+    1. Overflowing case selector and title.
+    2. Cramped tabs and overlapping labels.
+    3. Unbalanced columns, spacing, and scrolling.
+    4. Unreachable actions or clipped content.
+  - Preserve the existing design, features, navigation, and all stored data (no resetting, reseeding, or storage migration).
+  - Verify case selection, Findings/Evidence/Relationships tabs, linked incident navigation, forms, Back, and Escape.
+  - Test mutations only in an isolated browser profile.
+  - Capture populated before/after views at 1440×900 and 1920×1080 (100% zoom).
+  - Run TypeScript compilation, production build, case tests, and navigation tests.
+  - Record actual results in `docs/work-log.md`.
+  - Review and commit only Stage 3 changes, push to `origin main`, and return the exact commit link. Stop after Stage 3.
+
+---
+
+### 2. Code Changes
+
+#### `app/spatial/cases/case-workspace.css`
+- **Responsive 3-Column Grid**: Replaced rigid `320px 1fr 340px` and `54px 1fr 200px` with responsive clamp columns and fluid rows:
+  - Default (<=1799px / 1440px viewport): `grid-template-columns: clamp(300px, 22vw, 360px) minmax(400px, 1fr) clamp(320px, 24vw, 390px);`
+  - Bottom activity/notes row: `grid-template-rows: 54px 1fr clamp(180px, 22vh, 230px);`
+  - Ultra-wide (>=1800px / 1920px viewport): `grid-template-columns: 360px 1fr 400px; grid-template-rows: 56px 1fr 240px; gap: 16px;`
+- **Top Bar Overflow Elimination**:
+  - Added `min-width: 0; overflow: hidden; gap: 12px;` to `.case-top-bar`.
+  - Added `.case-back-btn` with Cyberpunk styling for one-click return to the Spatial Command Hub.
+  - Clamped `.case-top-select` to `max-width: clamp(170px, 16vw, 260px); min-width: 130px; text-overflow: ellipsis;`.
+  - Made `.case-top-left`: `flex: 1; min-width: 0; overflow: hidden;`.
+  - Made `.case-title-text`: `flex: 1; min-width: 0; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`.
+  - Made `.case-top-right`: `flex-shrink: 0; flex-wrap: nowrap; gap: 8px;` with dedicated `.case-owner-label` (`white-space: nowrap;`).
+- **Tab Layout & Overflow Protection**:
+  - Updated `.center-tabs` with `align-items: center; overflow-x: auto; scrollbar-width: none; flex-shrink: 0;`.
+  - Updated `.center-tab-btn` with `white-space: nowrap; flex-shrink: 0;` and sleek hover transitions.
+  - Added `flex-shrink: 0` to the `ADD FINDING` button to prevent button compression.
+- **Scroll Containment & Chip Truncation**:
+  - Added `overflow-x: hidden;` to `.case-panel-content`.
+  - Added `min-width: 0; max-width: 100%; box-sizing: border-box;` to `.context-card`.
+  - Added `max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;` to `.entity-chip`, resolving the 391px hex hash horizontal overflow bug.
+- **Operations & Activity Formatting**:
+  - Converted `.status-transitions-grid` to responsive CSS Grid: `grid-template-columns: repeat(auto-fill, minmax(95px, 1fr)); gap: 6px;`.
+  - Added `word-break: break-word;` to `.task-title` and `.note-body`.
+  - Added `flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;` to `.activity-action`.
+  - Added `max-height: 88vh;` and internal body scrolling to `.case-modal` to prevent modal clipping.
+
+#### `app/spatial/cases/CaseWorkspace.tsx`
+- **Hub Navigation Back Button**: Added dedicated `HUB` Back button (`.case-back-btn`) with `ArrowLeft` icon at the front of the top bar.
+- **Case Selector Option Optimization**: Formatted dropdown option strings concisely (`{c.caseNumber} — {c.title.length > 26 ? c.title.slice(0, 24) + '…' : c.title} ({c.status})`) with native `title` tooltips, preventing native select element blowout.
+- **Concise Tab Badges**: Streamlined tab headers to `FINDINGS (N)`, `EVIDENCE (N)`, and `RELATIONSHIPS`, ensuring zero wrapping across all viewport sizes.
+- **Hierarchical Escape Navigation**:
+  - Registered keydown listener in capture phase (`window.addEventListener('keydown', handleKeyDown, true)`).
+  - Progressive 3-level Escape sequence:
+    1. *Level 1*: Dismisses threat intel indicator popup (`selectedIntelIocId`).
+    2. *Level 2*: Dismisses open case action modals (`showCreateModal`, `showFindingModal`, `showResolveModal`, `showCloseModal`).
+    3. *Level 3*: Exits Case Workspace back to Spatial Command Hub (`onClose()`).
+  - Calls `e.preventDefault()`, `e.stopPropagation()`, and `e.stopImmediatePropagation()`.
+
+#### `app/spatial-controller.ts`
+- **Escape Delegation**: Updated global keydown handler to delegate Escape when `workspace === 'CASES'` directly to `CaseWorkspace`'s hierarchical state machine.
+
+---
+
+### 3. Verification & Test Results
+
+#### Unit & Domain Test Suites
+- `npx tsc --noEmit`: **0 errors** (clean TypeScript compilation).
+- `npx tsx scripts/test-step6-cases.ts`: **10/10 suites passed cleanly**:
+  1. Canonical Lifecycle Transitions & State Machine.
+  2. RBAC Authorization Matrix (L1, Hunter, Responder, Manager, Admin).
+  3. Provider Baseline & Operation BlackTide Case (CASE-000001).
+  4. Deterministic Sequential Numbering (CASE-000002, CASE-000003).
+  5. Lifecycle Transitions & Audit Trail.
+  6. Ownership & Reassignment.
+  7. Case Notes, Tasks & Findings.
+  8. Incident & Threat Hunt Linking.
+  9. Search & Filtering Queries.
+  10. SecurityService Facade & Reactivity.
+- `npx tsx scripts/test-soc-navigation.ts`: **7/7 suites passed cleanly** (Hub home screen, 6 zones, selection preservation, dynamic IDs, hierarchical Esc, command center drilldown, cross-workspace deep links).
+- Production Build (`npm run build`): Succeeded cleanly (`vinext build`).
+
+#### Browser Interaction & Layout Audit (`scripts/test-case-workspace-interactions.cjs`)
+Tested with Headless Chrome at 100% zoom across 1440×900 and 1920×1080:
+
+| Test / Dimension | 1440×900 Result | 1920×1080 Result | Specification / Status |
+| :--- | :--- | :--- | :--- |
+| **Top Bar Width** | 1408 px | 1880 px | Zero horizontal overflow (`scrollWidth <= clientWidth`: `true`) |
+| **HUB Back Button** | Present & functional | Present & functional | Navigates cleanly back to Spatial Command Hub |
+| **Case Selector Width** | 230 px | 260 px | Clamped within `clamp(170px, 16vw, 260px)` |
+| **Case Title Width** | 341 px | 784 px | Fluid truncated text without overlap or wrapping |
+| **Columns (Context / Center / Ops)** | 317px / 722px / 346px | 360px / 1088px / 400px | Balanced responsive clamp columns |
+| **Bottom Rows (Activity / Notes)** | 1056px / 346px (Height: 200px) | 1464px / 400px (Height: 240px) | Full visibility, balanced proportions |
+| **Panel Horizontal Scrolling** | **All panels OK** | **All panels OK** | Context, Center, Ops: all `scrollWidth <= clientWidth` (`true`) |
+| **Evidence Tab Switch** | 7 artifacts rendered | 7 artifacts rendered | Vault header, SHA-256 verification pills displayed |
+| **Relationships Tab Switch** | Spatial hierarchy rendered | Spatial hierarchy rendered | Case container, Incidents (1), Hunts (2), Findings (1), Tasks (3) |
+| **Findings Tab Switch** | 1 finding rendered | 1 finding rendered | Title, severity badge, full provenance tags (INC, HUNT, ALERT, EVT, EVD) |
+| **Linked Incident Navigation** | INVESTIGATE button clicked | INVESTIGATE button clicked | Navigated to Investigation workspace and returned to Cases |
+| **Modal Form Visibility** | CREATE CASE modal mounted | CREATE CASE modal mounted | Clean form fields (Title input, Textarea, Priority, Severity) |
+| **Hierarchical Escape** | 2-level progressive | 2-level progressive | Level 1: dismiss modal without exiting Cases; Level 2: exit to Hub |
+| **Center HUB Back Button** | Returned to Hub | Returned to Hub | Exited to Spatial Command Hub |
+
+#### Isolated Profile Mutation Tests (`scripts/test-case-mutations-isolated.cjs`)
+Executed in a temporary isolated browser profile:
+- **Case Creation**: Created and selected new operational case.
+- **Finding Creation**: Successfully added and rendered finding with provenance.
+- **Task Management**: Added new operational task and toggled status to `DONE`.
+- **Status Transitions**: Transitioned case through lifecycle (`IN_PROGRESS` -> `PENDING`).
+- **Profile Teardown**: Temporary profile directory purged cleanly with zero impact on primary database.
+
+---
+
+### 4. Stored Data Preservation Audit (`es-spatial-db` v13)
+All 36 IndexedDB object stores were audited before and after running the verification suite to ensure zero data loss, zero reseeding, and zero store clearing:
+
+| Object Store | Before Count | After Count | Status | Sample Primary Keys / IDs |
+| :--- | :--- | :--- | :--- | :--- |
+| `ai_action_proposals` | 0 | 0 | MATCH | *(Empty)* |
+| `ai_investigation_responses` | 0 | 0 | MATCH | *(Empty)* |
+| `alerts` | 11 | 11 | MATCH | `alt-1731535440000-31add991`, `alt-1731550621000-490f77fc` |
+| `approvals` | 0 | 0 | MATCH | *(Empty)* |
+| `assets` | 6 | 6 | MATCH | `asset-001`, `asset-002`, `asset-003` |
+| `audit_records` | 21 | 21 | MATCH | `audit-001`, `audit-002`, `audit-003` |
+| `case_findings` | 1 | 1 | MATCH | `finding-blacktide-001` |
+| `case_notes` | 1 | 1 | MATCH | `note-blacktide-001` |
+| `case_tasks` | 3 | 3 | MATCH | `task-blacktide-001`, `task-blacktide-002`, `task-blacktide-003` |
+| `cases` | 1 | 1 | MATCH | `case-blacktide-001` |
+| `detection_rule_versions` | 7 | 7 | MATCH | `DET-AUTH-001-v1`, `DET-EXF-001-v1`, `DET-GW-001-v1` |
+| `detection_rules` | 7 | 7 | MATCH | `DET-AUTH-001`, `DET-EXF-001`, `DET-GW-001` |
+| `detection_test_runs` | 0 | 0 | MATCH | *(Empty)* |
+| `events` | 22 | 22 | MATCH | `evt-raw-001`, `evt-raw-002`, `evt-raw-003` |
+| `evidence` | 3 | 3 | MATCH | `evd-blacktide-001`, `evd-blacktide-002`, `evd-blacktide-003` |
+| `evidence_annotations` | 2 | 2 | MATCH | `anno-seed-001`, `anno-seed-002` |
+| `evidence_blobs` | 0 | 0 | MATCH | *(Empty)* |
+| `evidence_custody` | 4 | 4 | MATCH | `custody-seed-001`, `custody-seed-002`, `custody-seed-003` |
+| `incidents` | 2 | 2 | MATCH | `incident-001`, `incident-002` |
+| `integration_configs` | 0 | 0 | MATCH | *(Empty)* |
+| `iocs` | 5 | 5 | MATCH | `ioc-001`, `ioc-002`, `ioc-003` |
+| `meta` | 15 | 15 | MATCH | `alerts_seeded`, `case_sequence`, `cases_seeded` |
+| `playbook_executions` | 0 | 0 | MATCH | *(Empty)* |
+| `playbook_versions` | 4 | 4 | MATCH | `PB-BLACKTIDE-ISOLATE:v1`, `PB-INCIDENT-ESCALATE:v1` |
+| `playbooks` | 4 | 4 | MATCH | `PB-BLACKTIDE-ISOLATE`, `PB-INCIDENT-ESCALATE` |
+| `response_actions` | 3 | 3 | MATCH | `action-001`, `action-002`, `action-003` |
+| `response_policies` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_results` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_runs` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_scenarios` | 5 | 5 | MATCH | `scen-auth-02`, `scen-blacktide-01`, `scen-endpoint-04` |
+| `sync_conflicts` | 0 | 0 | MATCH | *(Empty)* |
+| `sync_queue` | 0 | 0 | MATCH | *(Empty)* |
+| `threat_hunts` | 3 | 3 | MATCH | `hunt-seed-001`, `hunt-seed-002`, `hunt-seed-003` |
+| `threat_intel` | 5 | 5 | MATCH | `intel-ioc-001`, `intel-ioc-002`, `intel-ioc-003` |
+| `threat_intel_relationships` | 92 | 92 | MATCH | `rel-ioc-001-alt-alt-1731550682000-0076dd66` |
+| `users` | 3 | 3 | MATCH | `user-001`, `user-002`, `user-003` |
+
+**Preservation Verdict**: **100% PERFECT PRESERVATION** (All 36 stores identical, 0 records deleted, 0 stores cleared, 0 reseeding events).
+
+---
+
+### 5. Screenshots (Populated Case Management Views)
+
+#### Viewport: 1440×900
+- **Before**: `docs/screenshots/stage3_cases_before_1440.png` (169 KB, Top bar overflow, selector blowout, rigid columns)
+- **After**: `docs/screenshots/stage3_cases_after_1440.png` (166 KB, Zero overflow, HUB back button, clamped selector, balanced 3-column layout)
+
+#### Viewport: 1920×1080
+- **Before**: `docs/screenshots/stage3_cases_before_1920.png` (192 KB, Unbalanced layout, rigid 320px/340px columns)
+- **After**: `docs/screenshots/stage3_cases_after_1920.png` (184 KB, Expanded 360px/400px columns, fluid center space, zero clipping)
+
