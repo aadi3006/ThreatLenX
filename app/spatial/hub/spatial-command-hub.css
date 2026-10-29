@@ -1,0 +1,279 @@
+/**
+ * app/spatial/hub/spatial-command-hub.css
+ *
+ * Central Stylized Spherical Spatial Command Hub.
+ * Connected visually to the 6 primary SOC operational zones.
+ */
+
+.spatial-hub-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  perspective: 1200px;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.05) 0%, rgba(4, 8, 16, 0.98) 75%);
+  transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease, filter 300ms ease;
+  user-select: none;
+}
+
+.spatial-hub-stage.is-receding {
+  transform: scale(0.92);
+  opacity: 0;
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+/* ─── Background Orbit Tracks (SVG) ─── */
+.hub-orbit-tracks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.orbit-track-line {
+  fill: none;
+  stroke: rgba(0, 240, 255, 0.08);
+  stroke-width: 1;
+  stroke-dasharray: 4 8;
+}
+
+.orbit-connection-beam {
+  fill: none;
+  stroke: rgba(0, 240, 255, 0.22);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 6;
+  transition: stroke 0.25s ease, stroke-width 0.25s ease, filter 0.25s ease;
+}
+
+.orbit-connection-beam.is-active {
+  stroke: rgba(0, 240, 255, 0.9);
+  stroke-width: 2;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.8));
+}
+
+/* ─── Central Stylized Holographic Wireframe Sphere ─── */
+.hub-sphere-core {
+  position: absolute;
+  width: var(--hub-sphere-size, 170px);
+  height: var(--hub-sphere-size, 170px);
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  z-index: 3;
+}
+
+.hub-sphere-core.transitioning {
+  transform: translate(-50%, -50%) scale(1.3);
+  opacity: 0.3;
+}
+
+.hub-core-nucleus {
+  position: absolute;
+  width: calc(var(--hub-sphere-size, 170px) * 0.32);
+  height: calc(var(--hub-sphere-size, 170px) * 0.32);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.45) 0%, rgba(61, 255, 176, 0.15) 60%, transparent 100%);
+  border: 1px solid rgba(0, 240, 255, 0.7);
+  box-shadow: 0 0 24px rgba(0, 240, 255, 0.4), inset 0 0 12px rgba(61, 255, 176, 0.3);
+  animation: nucleus-pulse 3s infinite ease-in-out;
+}
+
+@keyframes nucleus-pulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+.hub-sphere-svg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sphere-ring {
+  fill: none;
+  stroke: rgba(0, 240, 255, 0.24);
+  stroke-width: 1;
+}
+
+.sphere-ring.equator {
+  stroke: rgba(61, 255, 176, 0.45);
+  stroke-dasharray: 4 6;
+  animation: ring-rotate-cw 24s linear infinite;
+  transform-origin: 140px 140px;
+}
+
+.sphere-ring.meridian {
+  stroke: rgba(0, 240, 255, 0.35);
+  animation: ring-rotate-ccw 30s linear infinite;
+  transform-origin: 140px 140px;
+}
+
+.sphere-ring.tilt {
+  stroke: rgba(0, 240, 255, 0.2);
+  stroke-dasharray: 3 5;
+}
+
+@keyframes ring-rotate-cw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ring-rotate-ccw {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+/* ─── Orbiting Destination Workspace Nodes Layer ─── */
+.hub-destinations-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  z-index: 6;
+}
+
+.hub-workspace-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  z-index: 7;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+}
+
+.hub-workspace-node.receding {
+  opacity: 0.15;
+  transform: translate(-50%, -50%) scale(0.85);
+  pointer-events: none;
+}
+
+/* Node Anchor Pill */
+.node-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(10, 18, 30, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.hub-workspace-node:hover .node-anchor,
+.hub-workspace-node.state-hovered .node-anchor {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: #00f0ff;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.45);
+  transform: scale(1.06);
+}
+
+.hub-workspace-node.state-focused .node-anchor {
+  background: rgba(0, 240, 255, 0.25);
+  border-color: #00f0ff;
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.65);
+  transform: scale(1.10);
+}
+
+.hub-workspace-node.state-selected .node-anchor {
+  background: #00f0ff;
+  color: #040810;
+  border-color: #ffffff;
+  box-shadow: 0 0 36px #00f0ff;
+  transform: scale(1.15);
+}
+
+.hub-workspace-node.state-selected .node-icon,
+.hub-workspace-node.state-selected .node-title {
+  color: #040810 !important;
+}
+
+.node-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.node-text-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.node-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #f1f5f9;
+  line-height: 1.2;
+}
+
+.node-sublabel {
+  font-size: 8px;
+  color: #94a3b8;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+.node-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(0, 240, 255, 0.2);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 240, 255, 0.5);
+}
+
+/* ─── Compact Hub Operational Status Bar ─── */
+.hub-status-ring {
+  position: absolute;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 18px;
+  background: rgba(6, 12, 22, 0.9);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 4px;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.hub-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.hub-status-item strong {
+  color: #00f0ff;
+}
+
+.hub-status-hint {
+  font-size: 8px;
+  color: rgba(61, 255, 176, 0.7);
+  letter-spacing: 0.08em;
+}

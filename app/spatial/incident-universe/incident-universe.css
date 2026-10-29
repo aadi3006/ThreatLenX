@@ -1,0 +1,780 @@
+/* ============================================================
+   EXPLAIN-SEC SPATIAL — Incident Universe CSS
+   Stage 2 visual design system
+   ============================================================ */
+
+/* ─── Universe Container ─────────────────────────────────── */
+
+.inc-universe {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+  overflow: hidden;
+  background: radial-gradient(ellipse 80% 60% at 50% 50%,
+    hsl(220 30% 8%) 0%,
+    hsl(220 25% 5%) 55%,
+    hsl(220 20% 3%) 100%
+  );
+  font-family: 'Chakra Petch', 'JetBrains Mono', monospace;
+}
+
+.inc-universe-loading,
+.inc-universe-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Boot / Loading ─────────────────────────────────────── */
+
+.inc-universe-boot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.inc-universe-boot-ring {
+  width: 64px;
+  height: 64px;
+  border: 2px solid #3dffb030;
+  border-top-color: #3dffb0;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.inc-universe-boot-text {
+  color: #3dffb0;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+.inc-universe-boot-sub {
+  color: #3dffb060;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.7; }
+  50%       { opacity: 1;   }
+}
+
+.inc-universe-empty-text {
+  color: #3dffb040;
+  font-size: 13px;
+  letter-spacing: 0.15em;
+}
+
+/* ─── Universe HUD bar ───────────────────────────────────── */
+
+.inc-universe-hud {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(10, 14, 22, 0.85);
+  border: 1px solid #3dffb025;
+  border-radius: 6px;
+  padding: 6px 18px;
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+
+.inc-hud-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.inc-hud-label {
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: #7b8ab8;
+  text-transform: uppercase;
+}
+
+.inc-hud-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #3dffb0;
+  line-height: 1;
+}
+
+.inc-hud-divider {
+  width: 1px;
+  height: 28px;
+  background: #3dffb020;
+}
+
+.inc-hud-mode {
+  font-size: 9px;
+  color: #3dffb070;
+  letter-spacing: 0.1em;
+}
+
+/* ─── Spatial field ──────────────────────────────────────── */
+
+.inc-universe-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Subtle tactical grid */
+.inc-field-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(61, 255, 176, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61, 255, 176, 0.025) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+}
+
+.inc-universe-links {
+  pointer-events: none;
+}
+
+/* ─── Incident Node ──────────────────────────────────────── */
+
+.inc-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity   0.35s ease;
+  z-index: 10;
+  outline: none;
+  user-select: none;
+}
+
+/* When universe has a focus — dim non-focused nodes and elevate focused node */
+.inc-universe.has-focus .inc-node:not(.focused) {
+  opacity: 0.12;
+  transform: translate(-50%, -50%) scale(0.88);
+  filter: blur(2px) grayscale(0.5);
+  pointer-events: none;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.inc-universe.has-focus .inc-node.focused {
+  transform: translate(-50%, -50%) scale(1.22);
+  z-index: 30;
+  filter: drop-shadow(0 0 28px var(--sev-color, #3dffb0));
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Orbit ring */
+.inc-orbit-ring {
+  position: absolute;
+  width: var(--orbit-size, 80px);
+  height: var(--orbit-size, 80px);
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--sev-color, #3dffb0) 20%, transparent);
+  animation: orbit-spin calc(var(--pulse-speed, 2s) * 4) linear infinite;
+  pointer-events: none;
+}
+
+@keyframes orbit-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Dwell progress SVG */
+.inc-dwell-svg {
+  position: absolute;
+  width: var(--node-size, 80px);
+  height: var(--node-size, 80px);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.inc-dwell-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--sev-color, #3dffb0) 12%, transparent);
+  stroke-width: 3;
+}
+
+.inc-dwell-arc {
+  fill: none;
+  stroke: var(--sev-color, #3dffb0);
+  stroke-width: 3;
+  stroke-linecap: round;
+  /* 2πr ≈ 276 for r=44 */
+  stroke-dasharray: 276;
+  stroke-dashoffset: calc(276 * (1 - var(--dwell-progress, 0)));
+  transition: stroke-dashoffset 0.08s linear;
+  filter: drop-shadow(0 0 4px var(--sev-color, #3dffb0));
+}
+
+/* Core body */
+.inc-core {
+  position: relative;
+  width: var(--node-size, 80px);
+  height: var(--node-size, 80px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+/* Pulse rings */
+.inc-pulse-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--sev-color, #3dffb0);
+  opacity: 0;
+  animation: node-pulse calc(var(--pulse-speed, 2s)) ease-out infinite;
+}
+
+.inc-pulse-ring.r1 {
+  width: 100%;
+  height: 100%;
+  animation-delay: 0s;
+}
+
+.inc-pulse-ring.r2 {
+  width: 80%;
+  height: 80%;
+  animation-delay: calc(var(--pulse-speed, 2s) * 0.4);
+}
+
+@keyframes node-pulse {
+  0%   { transform: scale(0.9); opacity: 0.6; }
+  60%  { opacity: 0.1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Hex icon */
+.inc-hex {
+  width: 40px;
+  height: 46px;
+}
+
+.inc-hex svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--sev-color, #3dffb0) 60%, transparent));
+}
+
+/* Risk score overlay */
+.inc-risk-score {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-top: -4px;
+}
+
+.inc-risk-unit {
+  font-size: 8px;
+  font-weight: 400;
+  opacity: 0.7;
+  margin-left: 1px;
+}
+
+/* Label strip */
+.inc-label-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  max-width: 160px;
+}
+
+.inc-label-id {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: #7b8ab8;
+}
+
+.inc-label-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.inc-label-status {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+/* Entity counts strip */
+.inc-entity-strip {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 9px;
+  color: #7b8ab8;
+  padding: 4px 10px;
+  background: rgba(10, 14, 24, 0.85);
+  border-radius: 4px;
+  border: 1px solid rgba(61, 255, 176, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: entity-strip-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes entity-strip-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* Fleet (CRITICAL) badge */
+.inc-fleet-badge {
+  position: absolute;
+  top: -6px;
+  right: -12px;
+  background: #ff2a2a;
+  color: #fff;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+/* Pointed / dwell state */
+.inc-node.pointed .inc-dwell-svg,
+.inc-node[data-dwelling] .inc-dwell-svg {
+  opacity: 1;
+}
+
+.inc-node.pointed .inc-orbit-ring {
+  border-color: color-mix(in srgb, var(--sev-color, #3dffb0) 65%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--sev-color, #3dffb0) 40%, transparent);
+}
+
+/* Focus state */
+.inc-node.focused .inc-hex svg {
+  filter: drop-shadow(0 0 20px var(--sev-color, #3dffb0));
+}
+
+/* ─── Focused Incident Overlay (Stage 3 Cinematic Radial Expansion) ─── */
+
+.inc-focus-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  background: radial-gradient(
+    circle at var(--focus-origin-x, 50%) var(--focus-origin-y, 50%),
+    rgba(8, 14, 28, 0.88) 0%,
+    rgba(5, 9, 18, 0.94) 50%,
+    rgba(3, 5, 12, 0.97) 100%
+  );
+  backdrop-filter: blur(8px);
+  animation: focus-radial-emerge 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes focus-radial-emerge {
+  from {
+    opacity: 0;
+    clip-path: circle(0% at var(--focus-origin-x, 50%) var(--focus-origin-y, 50%));
+  }
+  to {
+    opacity: 1;
+    clip-path: circle(150% at var(--focus-origin-x, 50%) var(--focus-origin-y, 50%));
+  }
+}
+
+/* ─── Incident Focus Panel ───────────────────────────────── */
+
+.inc-focus-panel {
+  width: min(820px, 94vw);
+  max-height: min(680px, 88vh);
+  background: rgba(8, 12, 22, 0.97);
+  border: 1px solid var(--sev-color, #ff2a2a);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 0 60px color-mix(in srgb, var(--sev-color, #ff2a2a) 20%, transparent),
+              0 20px 80px rgba(0,0,0,0.6);
+  animation: panel-emerge 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes panel-emerge {
+  from { transform: scale(0.92) translateY(12px); opacity: 0; }
+  to   { transform: scale(1) translateY(0);       opacity: 1; }
+}
+
+.inc-focus-panel.loading,
+.inc-focus-panel.error {
+  width: 400px;
+  padding: 40px;
+  align-items: center;
+  justify-content: center;
+  color: #3dffb0;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+
+.inc-focus-spinner {
+  animation: pulse-text 1s ease-in-out infinite;
+}
+
+/* Header */
+.inc-focus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 3px solid var(--sev-color, #ff2a2a);
+  background: rgba(255, 42, 42, 0.04);
+  flex-shrink: 0;
+}
+
+.inc-focus-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inc-focus-id {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.inc-focus-sev {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.inc-focus-status {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #7b8ab8;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.04);
+}
+
+.inc-focus-close {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #7b8ab8;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.inc-focus-close:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+
+/* Title */
+.inc-focus-title {
+  padding: 10px 18px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+/* Metrics strip */
+.inc-focus-metrics {
+  display: flex;
+  gap: 0;
+  padding: 0 18px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.inc-metric {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 3px;
+  color: #7b8ab8;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+.inc-metric-label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: #7b8ab8;
+}
+
+.inc-metric-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #3dffb0;
+  line-height: 1;
+}
+
+/* Tab bar */
+.inc-focus-tabs {
+  display: flex;
+  gap: 1px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.inc-focus-tab {
+  padding: 8px 16px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  color: #7b8ab8;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.inc-focus-tab:hover  { color: #c0c8e0; }
+.inc-focus-tab.active { color: #3dffb0; border-bottom-color: #3dffb0; }
+
+/* Tab body */
+.inc-focus-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 14px 18px;
+}
+
+/* Summary tab */
+.inc-summary-text {
+  font-size: 11px;
+  line-height: 1.7;
+  color: rgba(200, 210, 230, 0.85);
+  margin-bottom: 14px;
+}
+
+.inc-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.inc-detail-row {
+  display: flex;
+  gap: 8px;
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 3px;
+  align-items: baseline;
+}
+
+.inc-detail-label {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: #7b8ab8;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.inc-detail-value {
+  font-size: 10px;
+  color: rgba(200, 210, 230, 0.8);
+  word-break: break-all;
+}
+
+/* Entity sections */
+.inc-entity-section {
+  margin-bottom: 12px;
+}
+
+.inc-entity-header {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.inc-entity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  background: rgba(255,255,255,0.015);
+  margin-bottom: 2px;
+}
+
+.inc-entity-name {
+  color: rgba(220, 230, 248, 0.9);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.inc-entity-meta {
+  color: #7b8ab8;
+  font-size: 9px;
+}
+
+.ioc-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  word-break: break-all;
+}
+
+.inc-entity-status { font-size: 10px; }
+
+/* Status colors */
+.status-compromised  { color: #ff2a2a; }
+.status-suspicious   { color: #ffb700; }
+.status-isolated     { color: #a78bfa; }
+.status-healthy      { color: #3dffb0; }
+.status-investigating { color: #00f0ff; }
+.status-new          { color: #ffb700; }
+.status-triaged      { color: #a78bfa; }
+.status-containing   { color: #ff6b35; }
+.status-resolved     { color: #3dffb0; }
+.status-closed       { color: #7b8ab8; }
+.status-flagged      { color: #ffb700; }
+.status-active       { color: #3dffb0; }
+
+/* Relations tab */
+.rel-graph-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.rel-graph-svg {
+  width: 100%;
+  max-width: 560px;
+}
+
+.rel-line {
+  animation: rel-line-in 0.5s ease both;
+}
+
+@keyframes rel-line-in {
+  from { opacity: 0; stroke-dashoffset: 100; }
+  to   { opacity: 1; stroke-dashoffset: 0; }
+}
+
+.rel-node { animation: rel-node-in 0.4s ease both; }
+
+@keyframes rel-node-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.rel-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.rel-legend-item { opacity: 0.7; }
+
+/* Actions tab */
+.inc-actions-panel { display: flex; flex-direction: column; gap: 8px; }
+
+.inc-actions-note {
+  font-size: 10px;
+  color: #7b8ab8;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+
+.inc-actions-empty {
+  font-size: 11px;
+  color: #3dffb040;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.inc-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.inc-action-type { color: #00f0ff; font-weight: 600; min-width: 140px; }
+.inc-action-target { color: rgba(220, 230, 248, 0.8); flex: 1; }
+.inc-action-status { color: #ffb700; font-size: 9px; letter-spacing: 0.08em; }
+.inc-action-risk { color: #7b8ab8; font-size: 9px; }
+
+.inc-actions-footer {
+  margin-top: 8px;
+  font-size: 9px;
+  color: #3dffb040;
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+/* ─── Universe hint ──────────────────────────────────────── */
+
+.inc-universe-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #3dffb040;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ─── Proximity reactions (inherited from globals.css) ───── */
+
+.inc-node[data-proximity="near"] .inc-core {
+  filter: brightness(1.3);
+}
+
+.inc-node[data-proximity="ambient"] .inc-core {
+  filter: brightness(1.1);
+}
+
+.inc-node[data-dwelling="true"] .inc-dwell-arc {
+  stroke-dashoffset: calc(276 * (1 - var(--dwell-progress, 0)));
+}

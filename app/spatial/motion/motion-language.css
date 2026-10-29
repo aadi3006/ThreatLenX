@@ -1,0 +1,499 @@
+/**
+ * app/spatial/motion/motion-language.css
+ *
+ * EXPLAIN-SEC SPATIAL SOC — STEP 11: MOTION LANGUAGE & PERFORMANCE SYSTEM
+ *
+ * 1. MOTION TOKENS:
+ *    GPU-friendly durations, physical spring curves, non-blocking transitions.
+ *
+ * 2. HOVER SYSTEM:
+ *    - Surface Illumination: Subtle luminescent backdrop shift (no excessive glow)
+ *    - Edge Tracing: Clean hairline border illumination & sheen
+ *    - Metadata Reveal: Staggered secondary context emergence
+ *
+ * 3. SELECTION SYSTEM:
+ *    - Target Lock: Reticle bracket contraction & optical alignment
+ *    - Reticle: Precision bracket framing
+ *    - Signal Pulse: Single, finite acquisition pulse (settles to stable state)
+ *    - Focus Transition: Smooth elevation & spatial depth contrast
+ *
+ * 4. ALERT SYSTEM (DATA-DRIVEN 4-STAGE SEQUENCE):
+ *    - Stage 1: Signal Enters (subtle translation & opacity ramp)
+ *    - Stage 2: Classification (taxonomy chip illuminates)
+ *    - Stage 3: Alert Materializes (structured body unfolds)
+ *    - Stage 4: Severity Activates (single activation pulse -> stable resting tier)
+ *
+ * 5. SUCCESS SYSTEM (STATE-DRIVEN):
+ *    - Operation Completes -> Confirmation Pulse -> Stable State
+ *    - Strictly gated: NEVER animated when underlying operation fails
+ *
+ * 6. FAILURE SYSTEM (STATE-DRIVEN):
+ *    - Operation Fails -> Controlled Error State -> Explanation -> Remediation/Retry
+ *
+ * 7. PERFORMANCE HARDENING:
+ *    - Zero continuous pulsing on resting elements
+ *    - Pure CSS GPU acceleration (transform, opacity)
+ *    - Strict prefers-reduced-motion cancellation
+ */
+
+:root {
+  --motion-duration-snap: 120ms;
+  --motion-duration-fast: 180ms;
+  --motion-duration-normal: 260ms;
+  --motion-duration-slow: 380ms;
+  --motion-duration-staged: 650ms;
+
+  --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --motion-ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --motion-ease-snap: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Tactical surface illumination palette */
+  --motion-surface-idle: rgba(2, 22, 14, 0.65);
+  --motion-surface-hover: rgba(12, 38, 27, 0.88);
+  --motion-surface-active: rgba(20, 52, 38, 0.95);
+  --motion-edge-idle: rgba(61, 255, 176, 0.16);
+  --motion-edge-hover: rgba(61, 255, 176, 0.55);
+  --motion-edge-selected: rgba(0, 240, 255, 0.85);
+
+  --motion-success-color: #3dffb0;
+  --motion-failure-color: #ff3344;
+  --motion-warning-color: #ffb700;
+  --motion-critical-color: #ff2a2a;
+}
+
+/* ============================================================
+   1. HOVER SYSTEM
+   ============================================================ */
+
+.soc-motion-interactive {
+  position: relative;
+  background-color: var(--motion-surface-idle);
+  border: 1px solid var(--motion-edge-idle);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-spring),
+    border-color var(--motion-duration-fast) var(--motion-ease-spring),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-spring),
+    transform var(--motion-duration-fast) var(--motion-ease-spring);
+  will-change: transform, border-color, background-color;
+  transform: translateZ(0);
+}
+
+/* Surface Illumination: Controlled luminance increase without blown-out bloom */
+.soc-motion-interactive:hover {
+  background-color: var(--motion-surface-hover);
+  border-color: var(--motion-edge-hover);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    inset 0 0 12px rgba(61, 255, 176, 0.08);
+  transform: translateY(-1px) translateZ(0);
+}
+
+/* Edge Tracing: Precision hairline highlight trace */
+.soc-motion-interactive::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid transparent;
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-spring);
+}
+
+.soc-motion-interactive:hover::after {
+  border-color: rgba(61, 255, 176, 0.35);
+}
+
+/* Metadata Reveal: Staggered secondary information entrance */
+.soc-motion-meta-reveal {
+  opacity: 0.65;
+  transform: translateY(0);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-spring),
+    transform var(--motion-duration-fast) var(--motion-ease-spring),
+    color var(--motion-duration-fast) var(--motion-ease-spring);
+}
+
+.soc-motion-interactive:hover .soc-motion-meta-reveal,
+.soc-motion-interactive:focus-within .soc-motion-meta-reveal {
+  opacity: 1;
+  color: var(--hud-bright);
+  transform: translateY(-1px);
+}
+
+/* ============================================================
+   2. SELECTION SYSTEM
+   ============================================================ */
+
+/* Target Lock: Reticle snaps from offset bounds into locked registration */
+.soc-motion-selected,
+.soc-motion-interactive[data-selected="true"],
+.soc-motion-interactive.is-selected {
+  border-color: var(--motion-edge-selected) !important;
+  background-color: var(--motion-surface-active) !important;
+  box-shadow:
+    0 0 24px rgba(0, 240, 255, 0.25),
+    inset 0 0 16px rgba(0, 240, 255, 0.12) !important;
+  transform: scale(1.012) translateZ(0) !important;
+  z-index: 5;
+}
+
+/* Reticle brackets overlay */
+.soc-motion-reticle {
+  position: absolute;
+  inset: -3px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-snap);
+}
+
+.soc-motion-selected .soc-motion-reticle,
+.soc-motion-interactive:focus-visible .soc-motion-reticle {
+  opacity: 1;
+  animation: reticleTargetLock var(--motion-duration-fast) var(--motion-ease-spring) forwards;
+}
+
+@keyframes reticleTargetLock {
+  0% {
+    transform: scale(1.08);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Signal Pulse: Finite single pulse on acquisition (settles immediately) */
+.soc-motion-signal-pulse {
+  animation: singleSignalPulse var(--motion-duration-normal) var(--motion-ease-spring) 1 forwards;
+}
+
+@keyframes singleSignalPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(0, 240, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 240, 255, 0);
+  }
+}
+
+/* Focus Transition: Clean depth differentiation */
+.soc-motion-focus-transition {
+  transition:
+    transform var(--motion-duration-normal) var(--motion-ease-spring),
+    opacity var(--motion-duration-normal) var(--motion-ease-spring),
+    filter var(--motion-duration-normal) var(--motion-ease-spring);
+}
+
+.soc-focus-dimmed {
+  opacity: 0.35;
+  filter: grayscale(0.4) brightness(0.7);
+  pointer-events: none;
+  transform: scale(0.985);
+}
+
+/* ============================================================
+   3. ALERT SYSTEM (DATA-DRIVEN 4-STAGE SEQUENCE)
+   signal enters → classification → alert materializes → severity activates
+   ============================================================ */
+
+/* Stage 1: Signal Enters */
+.soc-alert-enter {
+  animation: alertSignalEnter var(--motion-duration-fast) var(--motion-ease-spring) forwards;
+}
+
+@keyframes alertSignalEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Stage 2: Classification (taxonomy indicator illuminates) */
+.soc-alert-classification {
+  opacity: 0;
+  animation: alertClassify 220ms var(--motion-ease-out) 80ms forwards;
+}
+
+@keyframes alertClassify {
+  0% {
+    opacity: 0;
+    filter: brightness(1.8);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+/* Stage 3: Alert Materializes (body content reveals) */
+.soc-alert-body {
+  opacity: 0;
+  animation: alertBodyReveal 240ms var(--motion-ease-spring) 140ms forwards;
+}
+
+@keyframes alertBodyReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stage 4: Severity Activates (finite activation pulse, then resting stable state) */
+.soc-alert-severity-active {
+  animation: severityActivationPulse 320ms var(--motion-ease-spring) 220ms 1 forwards;
+}
+
+@keyframes severityActivationPulse {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  45% {
+    transform: scale(1.04);
+    filter: brightness(1.6);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+/* Severity stable resting borders (No infinite flashing!) */
+.soc-alert-sev-critical {
+  border-left: 3px solid var(--motion-critical-color) !important;
+}
+.soc-alert-sev-high {
+  border-left: 3px solid #ff7700 !important;
+}
+.soc-alert-sev-medium {
+  border-left: 3px solid var(--motion-warning-color) !important;
+}
+.soc-alert-sev-low {
+  border-left: 3px solid #00f0ff !important;
+}
+.soc-alert-sev-info {
+  border-left: 3px solid #3dffb0 !important;
+}
+
+/* ============================================================
+   4. SUCCESS SYSTEM (STATE-DRIVEN)
+   operation completes → confirmation pulse → stable state
+   Never animated if the operation failed.
+   ============================================================ */
+
+.soc-motion-success {
+  animation: motionSuccessConfirmation 380ms var(--motion-ease-spring) 1 forwards;
+  border-color: var(--motion-success-color) !important;
+  background-color: rgba(61, 255, 176, 0.08) !important;
+}
+
+@keyframes motionSuccessConfirmation {
+  0% {
+    transform: scale(0.99);
+    box-shadow: 0 0 0 0 rgba(61, 255, 176, 0.7);
+  }
+  40% {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px 4px rgba(61, 255, 176, 0.35);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 8px 1px rgba(61, 255, 176, 0.15);
+  }
+}
+
+.soc-motion-success-icon {
+  animation: successIconSettle 320ms var(--motion-ease-spring) 1 forwards;
+}
+
+@keyframes successIconSettle {
+  0% {
+    transform: scale(0.6) rotate(-20deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2) rotate(4deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   5. FAILURE SYSTEM (STATE-DRIVEN)
+   operation fails → controlled error state → explanation → remediation/retry
+   ============================================================ */
+
+.soc-motion-failure {
+  animation: motionFailureSettle 280ms var(--motion-ease-spring) 1 forwards;
+  border-color: var(--motion-failure-color) !important;
+  background-color: rgba(255, 51, 68, 0.09) !important;
+  box-shadow: 0 0 16px rgba(255, 51, 68, 0.22) !important;
+}
+
+/* Controlled error entrance — NOT wild chaotic shaking */
+@keyframes motionFailureSettle {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+  75% {
+    transform: translateX(-1px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.soc-failure-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(20, 4, 8, 0.85);
+  border: 1px solid rgba(255, 51, 68, 0.5);
+  border-radius: 2px;
+}
+
+.soc-failure-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--motion-failure-color);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.soc-failure-explanation {
+  font-size: 11px;
+  color: #ffd4d8;
+  line-height: 1.5;
+}
+
+.soc-failure-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.soc-remediation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 51, 68, 0.2);
+  border: 1px solid var(--motion-failure-color);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all var(--motion-duration-fast) var(--motion-ease-spring);
+}
+
+.soc-remediation-btn:hover {
+  background: var(--motion-failure-color);
+  color: #000000;
+}
+
+/* ============================================================
+   6. PERFORMANCE HARDENING & MOTION HYGIENE
+   Eliminate constant pulsing & fake bouncing on resting elements.
+   ============================================================ */
+
+/* Stable status indicators (Resting states do NOT pulse indefinitely) */
+.soc-status-dot-stable {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  background-color: var(--hud-dim);
+}
+
+.soc-status-dot-stable.online {
+  background-color: var(--motion-success-color);
+  box-shadow: 0 0 6px rgba(61, 255, 176, 0.45);
+}
+
+.soc-status-dot-stable.offline {
+  background-color: #64748b;
+  box-shadow: none;
+}
+
+.soc-status-dot-stable.critical {
+  background-color: var(--motion-critical-color);
+  box-shadow: 0 0 6px rgba(255, 42, 42, 0.45);
+}
+
+/* In-flight real operations (Only pulse while actively awaiting backend I/O) */
+.soc-in-flight-executing {
+  animation: inFlightPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes inFlightPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ============================================================
+   7. ACCESSIBILITY & PREFERS-REDUCED-MOTION
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .soc-motion-interactive:hover {
+    transform: none !important;
+  }
+
+  .soc-motion-selected {
+    transform: none !important;
+  }
+
+  .soc-alert-enter,
+  .soc-alert-classification,
+  .soc-alert-body,
+  .soc-alert-severity-active,
+  .soc-motion-success,
+  .soc-motion-failure {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
