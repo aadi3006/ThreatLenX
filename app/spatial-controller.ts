@@ -92,7 +92,11 @@ export class SpatialInteractionController {
           break;
 
         case 'escape': {
-          if (socNavStore.getState().workspace === 'HUNTING' || socNavStore.getState().workspace === 'CASES') {
+          if (
+            socNavStore.getState().workspace === 'HUNTING' ||
+            socNavStore.getState().workspace === 'CASES' ||
+            socNavStore.getState().workspace === 'EVIDENCE'
+          ) {
             break;
           }
           e.preventDefault();

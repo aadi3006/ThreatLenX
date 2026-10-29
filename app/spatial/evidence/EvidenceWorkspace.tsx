@@ -57,6 +57,7 @@ import { ThreatIntelProfile } from '../intel/ThreatIntelProfile';
 import RbacBanner from '../components/RbacBanner';
 import { cyberAudio } from '../../cyber-audio';
 import {
+  ArrowLeft,
   FileCheck,
   Shield,
   ShieldCheck,
@@ -521,14 +522,63 @@ export default function EvidenceWorkspace({
     }
   };
 
+  // Hierarchical Escape key handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.code === 'Escape') {
+        // Level 1: Close active threat intel modal
+        if (selectedIntelIocId) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          cyberAudio.playClick();
+          setSelectedIntelIocId(null);
+          return;
+        }
+
+        // Level 2: Close open action modals
+        if (showCollectModal || showLinkFindingModal) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          cyberAudio.playClick();
+          setShowCollectModal(false);
+          setShowLinkFindingModal(false);
+          return;
+        }
+
+        // Level 3: Return to Spatial Command Hub
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        cyberAudio.playClick();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [selectedIntelIocId, showCollectModal, showLinkFindingModal, onClose]);
+
   return (
     <div className="evidence-workspace" role="region" aria-label="Evidence Management Workspace">
       {/* ─── ZONE 1: TOP BAR (HEADER & RBAC STATUS) ─────────────────────────── */}
       <header className="evidence-top-bar">
         <div className="evidence-top-left">
+          <button
+            className="evidence-back-btn"
+            onClick={() => {
+              cyberAudio.playClick();
+              onClose();
+            }}
+            title="Return to Spatial Command Hub (Esc)"
+          >
+            <ArrowLeft size={14} />
+            <span>HUB</span>
+          </button>
           <FileCheck size={18} color="#00f0ff" />
-          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', color: '#00f0ff' }}>
-            EVIDENCE MANAGEMENT VAULT
+          <span className="evidence-hub-heading">
+            EVIDENCE VAULT
           </span>
 
           {/* Scope filter: Case selector */}
@@ -540,6 +590,7 @@ export default function EvidenceWorkspace({
               setSelectedCaseId(e.target.value);
             }}
             aria-label="Filter Evidence by Case"
+            title="Filter evidence artifacts by assigned case"
           >
             <option value="all">ALL CASES ({evidenceList.length} ARTIFACTS)</option>
             {cases.map((c) => (
@@ -551,7 +602,7 @@ export default function EvidenceWorkspace({
         </div>
 
         {/* Center: RBAC Context Banner */}
-        <div style={{ flex: 1, maxWidth: 640, margin: '0 12px' }}>
+        <div className="evidence-rbac-wrap">
           <RbacBanner session={session} onRoleChange={handleRoleChange} compact={true} />
         </div>
 
@@ -702,12 +753,15 @@ export default function EvidenceWorkspace({
         {selectedEvidence ? (
           <>
             {/* Top Detail Header Strip */}
-            <div className="evidence-panel-header" style={{ background: 'rgba(6, 12, 24, 0.98)', borderBottom: '1px solid rgba(0, 240, 255, 0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="evidence-badge-id" style={{ color: '#00f0ff', fontWeight: 800 }}>
+            <div className="evidence-panel-header evidence-detail-header">
+              <div className="evidence-detail-header-left">
+                <span className="evidence-badge-id">
                   {selectedEvidence.evidenceNumber}
                 </span>
-                <span style={{ fontSize: 13, color: '#f8fafc', fontWeight: 700 }}>
+                <span
+                  className="evidence-title-banner"
+                  title={selectedEvidence.title}
+                >
                   {selectedEvidence.title}
                 </span>
                 <span className={`evidence-status-pill status-${selectedEvidence.status}`}>
@@ -716,7 +770,7 @@ export default function EvidenceWorkspace({
               </div>
 
               {/* Analyst Actions & RBAC Controls */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="evidence-detail-actions">
                 {/* 1. Verify Integrity Button */}
                 <button
                   className="evidence-btn-action"
@@ -838,7 +892,10 @@ export default function EvidenceWorkspace({
                     <div className="evidence-12field-cell">
                       <span className="evidence-field-label">2. SOURCE</span>
                       <span className="evidence-field-val">
-                        {selectedEvidence.sourceType} · <span className="font-mono">{selectedEvidence.sourceId || 'DIRECT_INGEST'}</span>
+                        <span className="evidence-source-tag">{selectedEvidence.sourceType}</span>
+                        <span className="font-mono" style={{ marginLeft: 6, color: '#94a3b8' }}>
+                          {selectedEvidence.sourceId || 'DIRECT_INGEST'}
+                        </span>
                       </span>
                     </div>
 
@@ -846,7 +903,8 @@ export default function EvidenceWorkspace({
                     <div className="evidence-12field-cell">
                       <span className="evidence-field-label">3. TIMESTAMP</span>
                       <span className="evidence-field-val">
-                        {new Date(selectedEvidence.collectedAt).toLocaleString()} ({selectedEvidence.collectedAt})
+                        {new Date(selectedEvidence.collectedAt).toLocaleString()}
+                        <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>({selectedEvidence.collectedAt})</span>
                       </span>
                     </div>
 
@@ -861,9 +919,12 @@ export default function EvidenceWorkspace({
                     {/* 5. Hash / Integrity */}
                     <div className="evidence-12field-cell" style={{ gridColumn: 'span 2' }}>
                       <span className="evidence-field-label">5. HASH & INTEGRITY SEAL</span>
-                      <span className="evidence-field-val font-mono" style={{ color: '#3dffb0' }}>
-                        SHA-256: {selectedEvidence.integrity?.hash || 'PENDING_RECALCULATION'}
-                      </span>
+                      <div className="evidence-hash-container">
+                        <span className="evidence-hash-algo">{selectedEvidence.integrity?.algorithm || 'SHA-256'}</span>
+                        <code className="evidence-hash-val">
+                          {selectedEvidence.integrity?.hash || 'PENDING_RECALCULATION'}
+                        </code>
+                      </div>
                     </div>
 
                     {/* 6. Incident */}
@@ -924,9 +985,12 @@ export default function EvidenceWorkspace({
                     {/* 12. Provenance */}
                     <div className="evidence-12field-cell" style={{ gridColumn: 'span 2' }}>
                       <span className="evidence-field-label">12. PROVENANCE & VERIFICATION METADATA</span>
-                      <span className="evidence-field-val" style={{ color: '#94a3b8', fontSize: 10 }}>
-                        Origin: {selectedEvidence.sourceType} · Acquisition Pipeline: Local Cryptographic IndexedDB · Hash Algorithm: {selectedEvidence.integrity?.algorithm || 'SHA-256'} · Immutable Ledger ID: {selectedEvidence.chainOfCustodyId || selectedEvidence.id}
-                      </span>
+                      <div className="evidence-provenance-meta">
+                        <span><strong style={{ color: '#00f0ff' }}>Origin:</strong> {selectedEvidence.sourceType}</span>
+                        <span><strong style={{ color: '#00f0ff' }}>Pipeline:</strong> Local Cryptographic IndexedDB</span>
+                        <span><strong style={{ color: '#00f0ff' }}>Algorithm:</strong> {selectedEvidence.integrity?.algorithm || 'SHA-256'}</span>
+                        <span><strong style={{ color: '#00f0ff' }}>Ledger ID:</strong> <span className="font-mono">{selectedEvidence.chainOfCustodyId || selectedEvidence.id}</span></span>
+                      </div>
                     </div>
                   </div>
 
@@ -948,8 +1012,11 @@ export default function EvidenceWorkspace({
                       <strong>{integrityStatus.result.verified ? '✓ INTEGRITY MATCH:' : '⚠ MISMATCH DETECTED:'}</strong>{' '}
                       {integrityStatus.result.message}
                       {integrityStatus.result.calculatedHash && (
-                        <div style={{ fontFamily: 'monospace', fontSize: 10, marginTop: 4 }}>
-                          Recalculated: {integrityStatus.result.calculatedHash}
+                        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ color: '#94a3b8' }}>Recalculated:</span>
+                          <code className="evidence-hash-val" style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: 3 }}>
+                            {integrityStatus.result.calculatedHash}
+                          </code>
                         </div>
                       )}
                     </div>

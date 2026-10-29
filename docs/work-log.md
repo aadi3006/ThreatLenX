@@ -337,3 +337,187 @@ All 36 IndexedDB object stores were audited before and after running the verific
 - **Before**: `docs/screenshots/stage3_cases_before_1920.png` (192 KB, Unbalanced layout, rigid 320px/340px columns)
 - **After**: `docs/screenshots/stage3_cases_after_1920.png` (184 KB, Expanded 360px/400px columns, fluid center space, zero clipping)
 
+---
+
+## Stage 4: Evidence Vault Operating Environment Refinement
+
+### 1. Task Objective & Prompt
+- **User Request**: Start ThreatLenX Stage 4: Evidence Vault layout corrections in `/Users/aadibondre/Document/explainsec-AR/explainsec-AR`.
+  - Inspect first, then fix:
+    1. Title wrapping.
+    2. Cramped action buttons.
+    3. Overlapping detail tabs.
+    4. Joined field labels/values.
+    5. Long hashes.
+    6. Scrolling (`scrollWidth <= clientWidth`).
+  - Preserve the existing design, features, navigation, and all stored data (`es-spatial-db` v13 across 36 object stores). Do not reset, reseed, or migrate storage.
+  - Verify evidence selection, search/filtering, all detail tabs, integrity verification, linked-case navigation, Back, and Escape.
+  - Test mutations strictly in an isolated browser profile.
+  - Capture populated before/after screenshots at 1440×900 and 1920×1080 with 100% zoom.
+  - Run TypeScript, build, evidence tests, and navigation tests. Compare stored record IDs/counts before and after.
+  - Record actual results in `docs/work-log.md`. Commit only reviewed Stage 4 changes, push to origin main, and return the exact commit link.
+  - Stop after Stage 4.
+
+---
+
+### 2. Code Changes
+
+#### `app/spatial/evidence/evidence-workspace.css`
+- **Responsive Inventory & Detail Grid Layout**:
+  - Replaced fixed `360px 1fr` columns with fluid responsive clamp columns:
+    - Default (<=1799px / 1440px viewport): `grid-template-columns: clamp(340px, 24vw, 380px) minmax(500px, 1fr);`
+    - Ultra-wide (>=1800px / 1920px viewport): `grid-template-columns: 400px 1fr; gap: 16px; padding: 56px 20px 16px 20px;`
+- **Top Bar & Navigation Controls**:
+  - Added `.evidence-back-btn` with Cyberpunk styling for one-click return to the Spatial Command Hub.
+  - Added `.evidence-hub-heading` (`white-space: nowrap; flex-shrink: 0;`).
+  - Clamped `.evidence-case-select` to `max-width: clamp(160px, 15vw, 240px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1;`.
+  - Added `.evidence-rbac-wrap` with `flex: 1; min-width: 0; max-width: 640px; margin: 0 12px;`.
+  - Constrained `.evidence-top-left` with `min-width: 0; flex-shrink: 1;` and `.evidence-top-right` with `flex-shrink: 0;`.
+- **Detail Header Strip & Action Buttons**:
+  - Created `.evidence-detail-header`: `display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; overflow: hidden;`.
+  - Created `.evidence-detail-header-left`: `display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; overflow: hidden;`.
+  - Updated `.evidence-title-banner`: `font-size: 13px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1;`.
+  - Created `.evidence-detail-actions`: `display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: nowrap;`.
+  - Set `.evidence-btn-action` with `white-space: nowrap; flex-shrink: 0;` to prevent button squashing.
+- **Detail Navigation & Tabs**:
+  - Updated `.evidence-detail-nav`: `overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex-shrink: 0;`.
+  - Updated `.evidence-detail-tab-btn`: `white-space: nowrap; flex-shrink: 0;` ensuring tabs never overlap or break onto multiple lines.
+- **12-Field Matrix Grid & Label/Value Separation**:
+  - Updated `.evidence-12field-grid`: `display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;` (expanded to `minmax(280px, 1fr)` at 1920px).
+  - Updated `.evidence-12field-cell`: `padding: 10px 12px; gap: 6px; min-height: 58px; justify-content: flex-start; min-width: 0;`, creating clear optical separation between field labels and values.
+  - Added `.evidence-source-tag`: cyan badge with border and clear padding.
+  - Added `.evidence-provenance-meta`: structured multi-badge metadata wrap.
+- **Long Hash Containment**:
+  - Created `.evidence-hash-container`: padded dark box with algo tag (`.evidence-hash-algo`) and mono hash container (`.evidence-hash-val`).
+  - Added `font-family: var(--font-mono); font-size: 10.5px; word-break: break-all; line-height: 1.4; letter-spacing: 0.04em;` to `.evidence-hash-val` to guarantee long 64-character SHA-256 hashes wrap cleanly within their cell without pushing or overflowing container bounds.
+- **Scroll Containment**:
+  - Added `overflow-x: hidden;` to `.evidence-panel-content` and `.evidence-workspace`.
+
+#### `app/spatial/evidence/EvidenceWorkspace.tsx`
+- **Hub Navigation Back Button**: Added dedicated `HUB` Back button (`.evidence-back-btn`) with `ArrowLeft` icon at the front of the top bar.
+- **Title Truncation & Tooltip**: Replaced unstyled title text in detail header with `.evidence-title-banner` featuring native `title={selectedEvidence.title}` tooltip and fluid flex truncation.
+- **Action Button Containerization**: Wrapped detail buttons inside `.evidence-detail-actions` to prevent wrapping or collapsing.
+- **Structured 12-Field Grid**:
+  - Cell 2: Added `.evidence-source-tag` and distinct mono source identifier.
+  - Cell 5: Styled with `.evidence-hash-container`, `.evidence-hash-algo` badge, and `.evidence-hash-val`.
+  - Cell 12: Converted unstyled run-on text into structured `.evidence-provenance-meta` tags.
+  - Live Integrity Check: Displayed recalculated hash within formatted code block with `word-break: break-all`.
+- **Hierarchical Escape Navigation**:
+  - Registered keydown listener in capture phase (`window.addEventListener('keydown', handleKeyDown, true)`).
+  - Progressive 3-level Escape sequence:
+    1. *Level 1*: Dismisses threat intel indicator popup (`selectedIntelIocId`).
+    2. *Level 2*: Dismisses open evidence action modals (`showCollectModal`, `showLinkFindingModal`).
+    3. *Level 3*: Exits Evidence Workspace back to Spatial Command Hub (`onClose()`).
+  - Calls `e.preventDefault()`, `e.stopPropagation()`, and `e.stopImmediatePropagation()`.
+
+#### `app/spatial-controller.ts`
+- **Escape Delegation**: Updated global keydown handler to delegate Escape when `workspace === 'EVIDENCE'` directly to `EvidenceWorkspace`'s hierarchical state machine.
+
+---
+
+### 3. Verification & Test Results
+
+#### Unit & Domain Test Suites
+- `npx tsc --noEmit`: **0 errors** (clean TypeScript compilation).
+- `npx tsx scripts/test-step7-evidence.ts`: **11/11 suites passed cleanly**:
+  1. Baseline Evidence Seeding (Operation BlackTide).
+  2. Case Association & Sequential Numbering.
+  3. SHA-256 Hashing & Integrity Verification.
+  4. Immutability of Core Provenance.
+  5. Append-Only Chain of Custody.
+  6. Analyst Investigative Annotations.
+  7. Status Transitions & Lifecycle Validation.
+  8. SOC Object Evidence Collectors.
+  9. Case Finding Linkage.
+  10. RBAC Authorization Verification.
+  11. Security Audit Trail Verification.
+- `npx tsx scripts/test-soc-navigation.ts`: **7/7 suites passed cleanly** (Hub home screen, 6 zones, selection preservation, dynamic IDs, hierarchical Esc, command center drilldown, cross-workspace deep links).
+- Production Build (`npm run build`): Succeeded cleanly (`vinext build`).
+
+#### Browser Interaction & Layout Audit (`scripts/test-evidence-workspace-interactions.cjs`)
+Tested with Headless Chrome at 100% zoom across 1440×900 and 1920×1080:
+
+| Test / Dimension | 1440×900 Result | 1920×1080 Result | Specification / Status |
+| :--- | :--- | :--- | :--- |
+| **Top Bar Width** | 1408 px | 1880 px | Zero horizontal overflow (`scrollWidth <= clientWidth`: `true`) |
+| **HUB Back Button** | Present & functional | Present & functional | Navigates cleanly back to Spatial Command Hub |
+| **Case Selector Width** | 220 px | 240 px | Clamped within `clamp(160px, 15vw, 240px)` |
+| **Columns (Inventory / Detail)** | 346 px / 1050 px | 400 px / 1464 px | Balanced responsive clamp columns |
+| **Detail Header Width** | 1048 px | 1462 px | Zero horizontal overflow (`scrollWidth <= clientWidth`: `true`) |
+| **Detail Actions Width** | 411 px | 411 px | `flex-wrap: nowrap`, zero button squashing |
+| **Detail Tabs** | 4 tabs (width: 837 px) | 4 tabs (width: 837 px) | `white-space: nowrap`, zero overlap, scrollable |
+| **12-Field Grid Cells Height** | 70 px – 82 px | 74 px – 88 px | Clear label/value separation (`min-height >= 58px`) |
+| **Long SHA-256 Hashes** | `word-break: break-all` | `word-break: break-all` | Formatted inside `.evidence-hash-container`, no overflow |
+| **Evidence Selection** | `EVD-000003` -> `EVD-000002` -> `EVD-000003` | Instant reactive switch | Active card highlighted, dossier loaded |
+| **Search & Filtering** | "PowerShell" -> 1 card; clear -> 3 cards | Instant reactive filter | Search query & filter selects tested |
+| **Detail Tabs Navigation** | PROVENANCE, CUSTODY, CONTEXT, NOTES | Instant tab switch | All 4 tabs rendered with zero layout disruption |
+| **Integrity Verification** | Live verification executed | Live verification executed | Recalculated SHA-256 hash displayed in code block |
+| **Linked-Case Navigation** | VIEW CASE button clicked | VIEW CASE button clicked | Switched to Case Workspace and returned cleanly |
+| **Hierarchical Escape** | 2-level progressive | 2-level progressive | Level 1: dismiss modal without exiting Evidence; Level 2: exit to Hub |
+
+#### Isolated Profile Mutation Tests (`scripts/test-evidence-mutations-isolated.cjs`)
+Executed strictly in an isolated ephemeral browser profile:
+- **Evidence Collection**: Opened collect modal, filled form with native setters, sealed artifact; cards incremented from 3 to 4.
+- **Annotation Addition**: Posted investigative note on artifact; annotation count incremented.
+- **Status Lifecycle**: Triggered review state transition and live hash recalculation.
+- **Profile Teardown**: Temporary profile directory purged cleanly with zero impact on primary database.
+
+---
+
+### 4. Stored Data Preservation Audit (`es-spatial-db` v13)
+All 36 IndexedDB object stores were audited before and after running the verification suite to ensure zero data loss, zero reseeding, and zero store clearing:
+
+| Object Store | Before Count | After Count | Status | Sample Primary Keys / IDs |
+| :--- | :--- | :--- | :--- | :--- |
+| `ai_action_proposals` | 0 | 0 | MATCH | *(Empty)* |
+| `ai_investigation_responses` | 0 | 0 | MATCH | *(Empty)* |
+| `alerts` | 11 | 11 | MATCH | `alt-1731535440000-31add991`, `alt-1731550621000-490f77fc` |
+| `approvals` | 0 | 0 | MATCH | *(Empty)* |
+| `assets` | 6 | 6 | MATCH | `asset-001`, `asset-002`, `asset-003` |
+| `audit_records` | 21 | 21 | MATCH | `audit-001`, `audit-002`, `audit-003` |
+| `case_findings` | 1 | 1 | MATCH | `finding-blacktide-001` |
+| `case_notes` | 1 | 1 | MATCH | `note-blacktide-001` |
+| `case_tasks` | 3 | 3 | MATCH | `task-blacktide-001`, `task-blacktide-002`, `task-blacktide-003` |
+| `cases` | 1 | 1 | MATCH | `case-blacktide-001` |
+| `detection_rule_versions` | 7 | 7 | MATCH | `DET-AUTH-001-v1`, `DET-EXF-001-v1`, `DET-GW-001-v1` |
+| `detection_rules` | 7 | 7 | MATCH | `DET-AUTH-001`, `DET-EXF-001`, `DET-GW-001` |
+| `detection_test_runs` | 0 | 0 | MATCH | *(Empty)* |
+| `events` | 22 | 22 | MATCH | `evt-raw-001`, `evt-raw-002`, `evt-raw-003` |
+| `evidence` | 3 | 3 | MATCH | `evd-blacktide-001`, `evd-blacktide-002`, `evd-blacktide-003` |
+| `evidence_annotations` | 2 | 2 | MATCH | `anno-seed-001`, `anno-seed-002` |
+| `evidence_blobs` | 0 | 0 | MATCH | *(Empty)* |
+| `evidence_custody` | 4 | 4 | MATCH | `custody-seed-001`, `custody-seed-002`, `custody-seed-003` |
+| `incidents` | 2 | 2 | MATCH | `incident-001`, `incident-002` |
+| `integration_configs` | 0 | 0 | MATCH | *(Empty)* |
+| `iocs` | 5 | 5 | MATCH | `ioc-001`, `ioc-002`, `ioc-003` |
+| `meta` | 15 | 15 | MATCH | `alerts_seeded`, `case_sequence`, `cases_seeded` |
+| `playbook_executions` | 0 | 0 | MATCH | *(Empty)* |
+| `playbook_versions` | 4 | 4 | MATCH | `PB-BLACKTIDE-ISOLATE:v1`, `PB-INCIDENT-ESCALATE:v1` |
+| `playbooks` | 4 | 4 | MATCH | `PB-BLACKTIDE-ISOLATE`, `PB-INCIDENT-ESCALATE` |
+| `response_actions` | 3 | 3 | MATCH | `action-001`, `action-002`, `action-003` |
+| `response_policies` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_results` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_runs` | 0 | 0 | MATCH | *(Empty)* |
+| `simulation_scenarios` | 5 | 5 | MATCH | `scen-auth-02`, `scen-blacktide-01`, `scen-endpoint-04` |
+| `sync_conflicts` | 0 | 0 | MATCH | *(Empty)* |
+| `sync_queue` | 0 | 0 | MATCH | *(Empty)* |
+| `threat_hunts` | 3 | 3 | MATCH | `hunt-seed-001`, `hunt-seed-002`, `hunt-seed-003` |
+| `threat_intel` | 5 | 5 | MATCH | `intel-ioc-001`, `intel-ioc-002`, `intel-ioc-003` |
+| `threat_intel_relationships` | 92 | 92 | MATCH | `rel-ioc-001-alt-alt-1731550682000-0076dd66` |
+| `users` | 3 | 3 | MATCH | `user-001`, `user-002`, `user-003` |
+
+**Preservation Verdict**: **100% PERFECT PRESERVATION** (All 36 stores identical, 0 records deleted, 0 stores cleared, 0 reseeding events).
+
+---
+
+### 5. Screenshots (Populated Evidence Vault Views)
+
+#### Viewport: 1440×900
+- **Before**: `docs/screenshots/stage4_evidence_before_1440.png` (125 KB, Rigid 360px inventory column, unstyled title banner, joined hash layout)
+- **After**: `docs/screenshots/stage4_evidence_after_1440.png` (125 KB, Zero overflow, HUB back button, responsive clamp columns, padded hash containers, non-wrapping actions)
+
+#### Viewport: 1920×1080
+- **Before**: `docs/screenshots/stage4_evidence_before_1920.png` (128 KB, Rigid columns, truncated title space)
+- **After**: `docs/screenshots/stage4_evidence_after_1920.png` (128 KB, Expanded 400px inventory, fluid 1464px detail panel, structured 12-field grid, zero clipping)
+
+
