@@ -204,8 +204,17 @@
 }
 
 .hub-workspace-node.state-selected .node-icon,
-.hub-workspace-node.state-selected .node-title {
+.hub-workspace-node.state-selected .node-icon-wrap,
+.hub-workspace-node.state-selected .node-icon-wrap svg,
+.hub-workspace-node.state-selected .node-title,
+.hub-workspace-node.state-selected .node-sublabel {
   color: #040810 !important;
+}
+
+.hub-workspace-node.state-selected .node-badge {
+  background: rgba(4, 8, 16, 0.2);
+  color: #040810 !important;
+  border-color: rgba(4, 8, 16, 0.4);
 }
 
 .node-icon-wrap {

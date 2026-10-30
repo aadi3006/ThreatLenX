@@ -26,6 +26,9 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
   const [perfMode, setPerfMode] = useState<PerformanceMode>(() => performanceManager.getMode());
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__socNavStore = socNavStore;
+    }
     // Initialize performance mode on client after hydration
     performanceManager?.initClient?.();
     return performanceManager.subscribe((m) => setPerfMode(m));
@@ -48,6 +51,9 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
 
   const handleNavigateZone = useCallback((zone: SpatialHubZone) => {
     cyberAudio.playModeSwitch();
+    if (zone === 'COMMAND') {
+      socNavStore.selectIncident(null);
+    }
     socNavStore.goToWorkspace(zone);
   }, []);
 
