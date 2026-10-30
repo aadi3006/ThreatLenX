@@ -971,6 +971,43 @@ Executed in a separate ephemeral Chrome user profile (`/tmp/threatlenx-chrome-pr
 - **Before**: `docs/screenshots/stage5_detection_before_1920.png` (Empty top space, missing Back button, unformatted condition text)
 - **After**: `docs/screenshots/stage5_detection_after_1920.png` (Spacious high-definition 3-column layout, balanced proportions, populated dry-run simulation with explainability breakdown)
 
+---
+
+## ThreatLenX Browser-Tab Branding Alignment
+
+**Date**: October 30, 2026  
+**Component**: Global Application Metadata & Browser-Tab Shell (`app/layout.tsx`, `vercel-app/index.html`)
+
+### 1. User Prompt & Objective
+> "Fix ThreatLenX browser-tab branding.
+> Search app/layout.tsx, vercel-app/index.html, and other title/metadata definitions for “Model X”, “ModelX”, and “Holographic Studio”.
+> Set the browser title to: ThreatLenX
+> Update the page description to match the cybersecurity SOC project. Preserve historical attribution in documentation.
+> Verify the title in both development and production builds. Record the change in docs/work-log.md, commit only branding changes, and push. Do not alter UI or stored data."
+
+### 2. Changes Made
+- **`app/layout.tsx`**:
+  - Replaced legacy `title: 'Model X — Holographic Systems Study'` with `title: 'ThreatLenX'`.
+  - Updated `description` from Tesla Model X wireframe study to: `'Offline-first spatial Security Operations Center (SOC) platform for real-time threat detection, attack graph investigation, hypothesis hunting, and incident response.'`.
+- **`vercel-app/index.html`**:
+  - Replaced `<title>Model X — Holographic Systems Study</title>` with `<title>ThreatLenX</title>`.
+  - Updated `<meta name="description">` to match the cybersecurity SOC project description.
+- **Attribution Preservation**:
+  - Historical attribution and design lineage preserved in documentation (`README.md`).
+  - No changes made to UI layout, application components, or stored IndexedDB data.
+
+### 3. Verification Across Builds
+- **Development Server (`vinext dev`)**:
+  - Queried `http://localhost:3000/` HTML payload via curl:
+  - Verified `<title>ThreatLenX</title>`.
+  - Verified `<meta name="description" content="Offline-first spatial Security Operations Center (SOC) platform for real-time threat detection, attack graph investigation, hypothesis hunting, and incident response."/>`.
+- **Primary Production Build (`vinext build`)**:
+  - Executed `npm run build`: built cleanly in $2.1\text{s}$.
+- **Vercel Production Build (`vite build --config vite.vercel.config.ts`)**:
+  - Executed `npm run build:vercel`: built cleanly in $0.28\text{s}$.
+  - Inspected `dist/vercel/index.html`: verified `<title>ThreatLenX</title>` and updated metadata description.
+
+
 
 
 
