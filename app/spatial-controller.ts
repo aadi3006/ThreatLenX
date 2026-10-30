@@ -95,7 +95,8 @@ export class SpatialInteractionController {
           if (
             socNavStore.getState().workspace === 'HUNTING' ||
             socNavStore.getState().workspace === 'CASES' ||
-            socNavStore.getState().workspace === 'EVIDENCE'
+            socNavStore.getState().workspace === 'EVIDENCE' ||
+            socNavStore.getState().workspace === 'DETECTION'
           ) {
             break;
           }
