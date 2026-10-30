@@ -101,22 +101,22 @@ function computeSpatialLayout(incidents: Incident[]): SpatialIncident[] {
     let y: number;
 
     if (i === 0) {
-      // Flagship incident: upper-center prominence
+      // Flagship incident: upper-center prominence with safe clearance
       x = CENTER_X;
-      y = 32;
+      y = 34;
     } else {
-      // Sunflower spiral for remaining incidents
+      // Sunflower spiral for remaining incidents bounded within safe central field
       const angle = i * GOLDEN_ANGLE * (Math.PI / 180);
       const radius = 14 + i * 5.5;  // grows outward
-      const radiusX = Math.min(radius, 36);  // clamp to canvas
-      const radiusY = Math.min(radius * 0.7, 30);
+      const radiusX = Math.min(radius, 22);  // clamp to central corridor so no flank overlap
+      const radiusY = Math.min(radius * 0.7, 24);
       x = CENTER_X + radiusX * Math.cos(angle);
       y = CENTER_Y + radiusY * Math.sin(angle);
     }
 
-    // Clamp to safe canvas bounds
-    x = Math.max(8, Math.min(92, x));
-    y = Math.max(10, Math.min(88, y));
+    // Clamp to safe central canvas bounds avoiding left/right flanks and top/bottom bars
+    x = Math.max(30, Math.min(70, x));
+    y = Math.max(24, Math.min(78, y));
 
     const risk = incident.riskScore;
 

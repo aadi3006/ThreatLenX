@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { useSocNav, socNavStore } from './spatial/state/use-soc-nav';
+import { spatialNavStore } from './spatial/state/use-spatial-nav';
 import { useSpatialDiscreteState } from './spatial-transform';
 import { spatialController } from './spatial-controller';
 import { SpatialCommandHub, type SpatialHubZone } from './spatial/hub/SpatialCommandHub';
@@ -55,6 +56,7 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
       socNavStore.selectIncident(null);
     }
     socNavStore.goToWorkspace(zone);
+    spatialNavStore.goToWorkspace(zone as any);
   }, []);
 
   const handleReturnToHub = useCallback(() => {
@@ -78,6 +80,7 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
               onSelectPanel={handleSelectPanel}
               onExitFocus={handleExitFocus}
               onClose={handleReturnToHub}
+              renderFlanks={true}
             />
           </div>
         ) : nav.workspace === 'INVESTIGATION' ? (
@@ -85,7 +88,13 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
             <InvestigationHub
               incidentId={effectiveIncidentId}
               onRegister={handleRegisterPanel}
-              onExitFocus={handleReturnToHub}
+              onExitFocus={() => {
+                if (nav.previousScreen?.workspace === 'COMMAND' || nav.history.some((h) => h.workspace === 'COMMAND')) {
+                  socNavStore.goToWorkspace('COMMAND', { incidentId: null });
+                } else {
+                  handleReturnToHub();
+                }
+              }}
             />
           </div>
         ) : nav.workspace === 'HUNTING' ? (

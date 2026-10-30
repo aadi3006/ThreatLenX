@@ -251,40 +251,48 @@
 .soc-kpi-halo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   pointer-events: auto;
+  flex-wrap: nowrap;
 }
 
 .kpi-cell {
   background: rgba(8, 12, 20, 0.82);
   border: 1px solid rgba(0, 240, 255, 0.2);
   border-radius: 6px;
-  padding: 5px 12px;
+  padding: 4px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 78px;
+  justify-content: center;
+  min-width: 68px;
+  height: 48px;
+  box-sizing: border-box;
   backdrop-filter: blur(8px);
+  white-space: nowrap;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .kpi-num {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
-  line-height: 1;
+  line-height: 1.1;
 }
 
 .kpi-lbl {
-  font-size: 7.5px;
+  font-size: 7px;
   font-weight: 700;
   color: #a0aec0;
-  letter-spacing: 0.08em;
-  margin-top: 2px;
+  letter-spacing: 0.07em;
+  margin-top: 1px;
 }
 
 .kpi-sub {
-  font-size: 7px;
+  font-size: 6.5px;
   color: #718096;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  margin-top: 1px;
 }
 
 .wings-toggle-btn {
@@ -292,15 +300,19 @@
   border: 1px solid rgba(0, 240, 255, 0.35);
   color: #00f0ff;
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 4px 10px;
+  height: 48px;
+  box-sizing: border-box;
   font-size: 9px;
   font-weight: 700;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   cursor: pointer;
   letter-spacing: 0.06em;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .wings-toggle-btn:hover {
@@ -313,8 +325,8 @@
 .soc-left-flank {
   position: absolute;
   left: 20px;
-  top: 110px;
-  bottom: 60px;
+  top: 144px;
+  bottom: 56px;
   width: 320px;
   background: rgba(8, 12, 20, 0.85);
   border: 1px solid rgba(0, 240, 255, 0.22);
@@ -325,6 +337,7 @@
   flex-direction: column;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
   animation: fadeInLeft 0.25s ease-out;
+  z-index: 20;
 }
 
 .flank-header {
@@ -481,14 +494,15 @@
 .soc-right-flank {
   position: absolute;
   right: 20px;
-  top: 110px;
-  bottom: 60px;
+  top: 144px;
+  bottom: 56px;
   width: 290px;
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
   animation: fadeInRight 0.25s ease-out;
+  z-index: 20;
 }
 
 .flank-pod {

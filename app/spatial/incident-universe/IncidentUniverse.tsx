@@ -225,8 +225,8 @@ export default function IncidentUniverse({
         );
       })()}
 
-      {/* Return to Hub Button */}
-      {onClose && (
+      {/* Return to Hub Button (only when standalone without CommandCenter flank header) */}
+      {onClose && !renderFlanks && (
         <button
           className="wings-toggle-btn hub-return-btn"
           onClick={() => {

@@ -762,7 +762,9 @@ export default function CommandCenter({
                 background: 'rgba(0, 240, 255, 0.15)',
                 border: '1px solid rgba(0, 240, 255, 0.4)',
                 color: '#00f0ff',
-                padding: '6px 10px',
+                padding: '4px 10px',
+                height: 48,
+                boxSizing: 'border-box',
                 borderRadius: 4,
                 fontSize: 9,
                 fontWeight: 700,
@@ -771,6 +773,7 @@ export default function CommandCenter({
                 alignItems: 'center',
                 gap: 4,
                 letterSpacing: '0.06em',
+                whiteSpace: 'nowrap',
               }}
               title="Create a new incident offline"
             >
@@ -778,7 +781,7 @@ export default function CommandCenter({
             </button>
           )}
 
-                    {/* Return to Spatial Hub Button */}
+          {/* Return to Spatial Hub Button */}
           {onClose && (
             <button
               className="wings-toggle-btn hub-return-btn"
@@ -787,7 +790,7 @@ export default function CommandCenter({
                 onClose();
               }}
               title="Return to Spatial Command Hub [ESC]"
-              style={{ borderColor: "rgba(0, 240, 255, 0.4)", color: "#00f0ff" }}
+              style={{ borderColor: "rgba(0, 240, 255, 0.4)", color: "#00f0ff", height: 48, boxSizing: 'border-box' }}
             >
               <ArrowLeft size={12} />
               <span>HUB [ESC]</span>

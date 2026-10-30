@@ -152,8 +152,16 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
   const handleExit = () => {
     cyberAudio.playClick();
     triggerCollapse(() => {
-      socNavStore.goToHub();
-      onExitFocus();
+      const state = socNavStore.getState();
+      const prevWs = state.previousScreen?.workspace;
+      const historyHasCommand = state.history.some((h) => h.workspace === 'COMMAND');
+      if (state.workspace === 'COMMAND' || prevWs === 'COMMAND' || historyHasCommand) {
+        socNavStore.goToWorkspace('COMMAND', { incidentId: null });
+        onExitFocus();
+      } else {
+        socNavStore.navigateBack();
+        onExitFocus();
+      }
     });
   };
 
@@ -181,7 +189,19 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
       } else if (e.key === 'Escape') {
         e.preventDefault();
         cyberAudio.playClick();
-        socNavStore.navigateBack();
+        const state = socNavStore.getState();
+        const prevWs = state.previousScreen?.workspace;
+        const historyHasCommand = state.history.some((h) => h.workspace === 'COMMAND');
+        if (state.activeInvestigationPanel !== null) {
+          socNavStore.navigateBack();
+        } else if (state.workspace === 'COMMAND' || prevWs === 'COMMAND' || historyHasCommand) {
+          triggerCollapse(() => {
+            socNavStore.goToWorkspace('COMMAND', { incidentId: null });
+            onExitFocus();
+          });
+        } else {
+          socNavStore.navigateBack();
+        }
       }
     };
 
@@ -260,14 +280,10 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
         <div className="inv-header-left">
           <button
             className="inv-exit-btn inv-back-btn"
-            onClick={() => {
-              cyberAudio.playClick();
-              spatialNavStore.navigateBack();
-              spatialTransform.setFocusedPanel(null);
-            }}
-            title="Return to Incident List [ESC]"
+            onClick={handleExit}
+            title="Return to Command Center / Incidents [ESC]"
           >
-            <ArrowLeft size={11} /> INCIDENTS
+            <ArrowLeft size={11} /> {socNavStore.getState().workspace === 'COMMAND' || socNavStore.getState().previousScreen?.workspace === 'COMMAND' ? 'COMMAND CENTER' : 'INCIDENTS'}
           </button>
 
           {/* INCIDENT ID */}
@@ -327,7 +343,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
             </span>
           )}
           <button
-            className="inv-exit-btn"
+            className="inv-ai-btn"
             style={{
               borderColor: isContextualAiOpen ? '#00f0ff' : 'rgba(0, 240, 255, 0.4)',
               color: '#00f0ff',

@@ -293,12 +293,15 @@ class SpatialNavStore {
     let itemLabel: string | undefined;
 
     const KNOWN_WS = ['INVESTIGATION', 'COMMAND', 'HUNTING', 'CASES', 'EVIDENCE', 'DETECTION', 'METRICS', 'SIMULATION', 'RESPONSE', 'AI'];
+    const currentSocWs = typeof window !== 'undefined' ? (window as any).__socNavStore?.getState()?.workspace : undefined;
     if (KNOWN_WS.includes(workspaceOrItemId)) {
       ws = workspaceOrItemId as SpatialMode;
       itemId = itemIdOrLabel || 'incident-001';
       itemLabel = undefined;
     } else {
-      ws = this.state.activeWorkspace === 'SPATIAL' ? 'INVESTIGATION' : this.state.activeWorkspace;
+      ws = (currentSocWs && currentSocWs !== 'HUB')
+        ? currentSocWs
+        : (this.state.activeWorkspace === 'SPATIAL' ? 'INVESTIGATION' : this.state.activeWorkspace);
       itemId = workspaceOrItemId;
       itemLabel = itemIdOrLabel;
     }
@@ -329,7 +332,9 @@ class SpatialNavStore {
       ...preservedPatch,
     });
 
-    spatialTransform.setMode(ws);
+    if (ws !== 'COMMAND') {
+      spatialTransform.setMode(ws);
+    }
     spatialTransform.setFocusedPanel(itemId);
     spatialUiStore.exitHubMode();
   }
