@@ -131,6 +131,12 @@
   height: 100%;
 }
 
+.inc-universe-field.has-reserved-dock {
+  top: calc(var(--soc-header-bottom, 110px) + 6px);
+  bottom: calc(var(--soc-dock-height, 160px) + 22px);
+  height: auto;
+}
+
 /* Subtle tactical grid */
 .inc-field-grid {
   position: absolute;

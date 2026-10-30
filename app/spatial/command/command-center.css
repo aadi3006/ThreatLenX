@@ -325,8 +325,8 @@
 .soc-left-flank {
   position: absolute;
   left: 20px;
-  top: 144px;
-  bottom: 56px;
+  top: calc(var(--soc-header-bottom, 110px) + 12px);
+  bottom: calc(var(--soc-dock-height, 160px) + 24px);
   width: 320px;
   background: rgba(8, 12, 20, 0.85);
   border: 1px solid rgba(0, 240, 255, 0.22);
@@ -338,6 +338,7 @@
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
   animation: fadeInLeft 0.25s ease-out;
   z-index: 20;
+  overflow: hidden;
 }
 
 .flank-header {
@@ -494,8 +495,8 @@
 .soc-right-flank {
   position: absolute;
   right: 20px;
-  top: 144px;
-  bottom: 56px;
+  top: calc(var(--soc-header-bottom, 110px) + 12px);
+  bottom: calc(var(--soc-dock-height, 160px) + 24px);
   width: 290px;
   pointer-events: auto;
   display: flex;
@@ -503,6 +504,7 @@
   gap: 10px;
   animation: fadeInRight 0.25s ease-out;
   z-index: 20;
+  overflow: hidden;
 }
 
 .flank-pod {
@@ -690,6 +692,8 @@
 /* ─── BOTTOM SECTOR: LIVE OPERATIONAL ACTIVITY STREAM ──────── */
 
 .soc-bottom-stream {
+  position: relative;
+  z-index: 30;
   width: 100%;
   background: rgba(6, 10, 16, 0.92);
   border: 1px solid rgba(0, 240, 255, 0.25);
@@ -700,6 +704,8 @@
   display: flex;
   flex-direction: column;
   transition: all 0.25s ease;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .soc-bottom-stream.is-expanded {

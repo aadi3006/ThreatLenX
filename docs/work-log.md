@@ -664,17 +664,26 @@ Inspection via `scripts/inspect-hub-stage5.cjs` evaluated geometry, bounding box
 
 1. **Panel Overlap at 1440×900 Viewport**:
    - `.soc-left-flank` and `.soc-right-flank` were positioned at `top: 110px`. At 1440×900, the bottom of `.soc-top-sector` extended to $y=134\text{px}$, causing a direct $24\text{px}$ vertical overlap collision between the top header sector and the side flank panels.
-   - **Fix**: In `app/spatial/command/command-center.css`, updated flank positioning to `top: 144px; bottom: 56px; z-index: 20;`, guaranteeing $>39\text{px}$ clear vertical separation.
-2. **Duplicate Return Buttons**:
+   - **Fix**: In `app/spatial/command/command-center.css`, updated flank positioning to `top: calc(var(--soc-header-bottom, 110px) + 12px);`, guaranteeing $>12\text{px}$ clear vertical separation.
+2. **Left/Right Flanks and Canvas Overlapping Bottom Telemetry Feed**:
+   - At 1440×900, `.soc-left-flank` and `.soc-right-flank` extended down to `bottom: 56px` ($y=757\text{px}$), while `.soc-bottom-stream` starts at $y=642.5\text{px}$. The flanks overlapped the telemetry feed by $>114\text{px}$, completely covering the telemetry heading, category pills, and action controls (`+ SIMULATE INGEST`, expand toggle).
+   - Furthermore, the incident universe canvas (`.inc-universe-field`) spanned `inset: 0` ($100\%$ height) down to $y=813\text{px}$, extending behind and under the telemetry dock.
+   - **Fix**:
+     - Measured actual header (`.soc-top-sector`) and telemetry dock (`.soc-bottom-stream`) bounding dimensions via `ResizeObserver` and isomorphic layout effects.
+     - Reserved dedicated dock layout space for `.soc-bottom-stream` (`position: relative; z-index: 30; margin-top: auto; flex-shrink: 0;`).
+     - Constrained left and right flanks dynamically with `top: headerBottom + 12px`, `bottom: dockHeight + 24px`, and `maxHeight: dockTop - flankTop - 12px`.
+     - Bounded the incident canvas (`.inc-universe-field.has-reserved-dock`) to start below the header (`top: headerBottom + 6px`) and end strictly above the telemetry dock (`bottom: dockHeight + 22px`).
+     - Elevated the keyboard hint (`.inc-universe-hint`) to sit comfortably above the telemetry dock (`bottom: dockHeight + 22px`).
+3. **Duplicate Return Buttons**:
    - Both `IncidentUniverse.tsx` (`top: 20px, left: 24px`) and `CommandCenter.tsx` (`.soc-kpi-halo`) rendered `.hub-return-btn` buttons, producing an overlapping duplicate above the threat beacon when flanks were mounted.
    - **Fix**: In `IncidentUniverse.tsx`, conditioned the standalone return button on `!renderFlanks`, rendering a single, unified return button within the Command Center KPI halo.
-3. **Cramped KPI Metrics and Action Buttons**:
+4. **Cramped KPI Metrics and Action Buttons**:
    - In `.soc-kpi-halo`, cell heights varied erratically from 51px to 78px across 10 KPI cells, `.wings-toggle-btn`, and `.inc-create-btn`.
    - **Fix**: Standardized all `.kpi-cell`, `.wings-toggle-btn`, and `.inc-create-btn` components to a uniform 48px height with `gap: 6px`, consistent typography, and `box-sizing: border-box`.
-4. **Incident Node Lateral Intrusion & Label Text Clipping**:
+5. **Incident Node Lateral Intrusion & Label Text Clipping**:
    - The unconstrained spiral layout formula in `use-security-spatial.ts` allowed incident nodes to drift into lateral flank zones ($x < 25\%$ or $x > 75\%$), causing visual collisions with the incident queue and live telemetry feed.
    - **Fix**: Bounded `computeSpatialLayout` inside a safe central corridor ($30\% \le x \le 70\%$, $24\% \le y \le 78\%$), guaranteeing $\ge 90\text{px}$ radial clearance from both flanks. Added `max-width: 170px`, `word-break: break-word`, and `overflow-wrap: break-word` to `.inc-label-strip` and `.inc-label-title`.
-5. **Investigation Drill-Down & Multi-Tier Return Navigation**:
+6. **Investigation Drill-Down & Multi-Tier Return Navigation**:
    - Selecting an incident in Command Center mounted `InvestigationHub`. However, exiting via Back or Escape was inadvertently switching workspaces or calling uncoordinated store methods (`socNavStore.goToHub()`), skipping the Command Center overview.
    - **Fix**: Synchronized `spatialNavStore` in `soc-spatial.tsx` and updated `InvestigationHub.tsx`'s `handleExit` and Escape key handler to verify history and return directly to Command Center overview mode (`socNavStore.goToWorkspace('COMMAND', { incidentId: null })`), collapsing the focused incident overlay smoothly.
 
@@ -682,15 +691,24 @@ Inspection via `scripts/inspect-hub-stage5.cjs` evaluated geometry, bounding box
 
 ### 3. Code Changes
 
+#### `app/spatial/command/CommandCenter.tsx`
+- **Dynamic Dimension Measurement**: Added `useRef` for header (`topSectorRef`) and telemetry dock (`bottomStreamRef`), continuously measured via `ResizeObserver` and `useIsomorphicLayoutEffect`.
+- **Dynamic Flank Constraints**: Set `leftFlankStyle` and `rightFlankStyle` with dynamic `top: headerBottom + 12px`, `bottom: dockHeight + 24px`, and `maxHeight: dockTop - flankTop - 12px`.
+- **Layout Callback**: Emitted measured dimensions via `onLayoutMeasure` to coordinate incident canvas containment.
+- **Action Button & Metric Standardizations**: Aligned `.wings-toggle-btn`, `.inc-create-btn`, and KPI halo cells to 48px height.
+
 #### `app/spatial/command/command-center.css`
-- **Flank Panel Separation**: Set `.soc-left-flank` and `.soc-right-flank` to `top: 144px; bottom: 56px; z-index: 20;`.
-- **Standardized KPI Halo Geometry**: Set `.kpi-cell` to `height: 48px; min-height: 48px; max-height: 48px; box-sizing: border-box; gap: 2px;`.
-- **Action Button Alignment**: Updated `.wings-toggle-btn` and `.inc-create-btn` to `height: 48px; min-height: 48px; max-height: 48px; box-sizing: border-box;`.
+- **Reserved Dock Layout Space**: Added `position: relative; z-index: 30; margin-top: auto; flex-shrink: 0;` to `.soc-bottom-stream`.
+- **Flank Dock Clearance**: Updated `.soc-left-flank` and `.soc-right-flank` with `top: calc(var(--soc-header-bottom, 110px) + 12px); bottom: calc(var(--soc-dock-height, 160px) + 24px); overflow: hidden;`.
+- **KPI Halo Alignment**: Set `.kpi-cell`, `.wings-toggle-btn`, and `.inc-create-btn` to standardized 48px height.
 
 #### `app/spatial/incident-universe/IncidentUniverse.tsx`
+- **Reserved Canvas Space**: Connected `onLayoutMeasure` callback to bound `.inc-universe-field` with `top: dockLayout.headerBottom + 6px` and `bottom: dockLayout.dockHeight + 22px`.
+- **Elevated Keyboard Hint**: Offset `.inc-universe-hint` with `bottom: dockLayout.dockHeight + 22px`.
 - **Duplicate Return Button Elimination**: Render absolute `.hub-return-btn` only when `!renderFlanks`.
 
 #### `app/spatial/incident-universe/incident-universe.css`
+- **Field Dock Containment**: Added `.inc-universe-field.has-reserved-dock` with `top: calc(var(--soc-header-bottom, 110px) + 6px); bottom: calc(var(--soc-dock-height, 160px) + 22px); height: auto;`.
 - **Label Wrapping & Truncation**: Added `max-width: 170px; word-break: break-word; overflow-wrap: break-word;` to `.inc-label-strip` and `.inc-label-title`.
 
 #### `app/spatial/state/use-security-spatial.ts`
@@ -709,16 +727,28 @@ Inspection via `scripts/inspect-hub-stage5.cjs` evaluated geometry, bounding box
 - **Store Synchronization**: Synchronized `spatialNavStore.goToWorkspace` alongside `socNavStore.goToWorkspace` in `handleNavigateZone`.
 - **Safe Exit Navigation**: Fallback from `INVESTIGATION` returns to `COMMAND` overview if history includes `COMMAND`.
 
+#### `scripts/verify-stage5-command.cjs`
+- **Explicit Flank-versus-Telemetry Overlap Assertions**: Added explicit checks asserting `leftRect.bottom <= streamRect.top` and `rightRect.bottom <= streamRect.top` at 1440×900 and 1920×1080.
+- **Control Overlap Assertions**: Added assertions confirming flanks do not overlap `streamHeader` or `streamActions`.
+- **Interactive Telemetry Controls**: Added verification clicking category pills and testing dynamic clearance adaptation when telemetry stream expands/collapses.
+
 ---
 
 ### 4. Verification & Actual Test Results (`scripts/verify-stage5-command.cjs`)
 
 | Verification Check | Target / Trigger | Expected Outcome | Actual Result | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **Command Center Overview Mode** | Navigate from Hub to `COMMAND` | Mounts `.soc-command-center` with universe, KPI halo, and operational flanks | Mounted universe, 10 KPI cells, left & right flanks | **PASS** |
-| **Flank vs Top Sector Overlap (1440×900)** | Viewport 1440×900 | Flank `top: 144px` > Top Sector `bottom: 105px` ($\Delta y > 39\text{px}$) | `leftOverlapTop: false`, `rightOverlapTop: false` | **PASS** |
-| **Flank vs Top Sector Overlap (1920×1080)** | Viewport 1920×1080 | Flank `top: 144px` > Top Sector `bottom: 105px` ($\Delta y > 39\text{px}$) | `leftOverlapTop: false`, `rightOverlapTop: false` | **PASS** |
-| **Incident Node Clearance** | Both viewports (1440 & 1920) | Central corridor bounding ($30\%..70\%$ X) avoids flanks | `overlapsLeft: false`, `overlapsRight: false`, `overlapsTop: false` for all nodes | **PASS** |
+| **Command Center Overview Mode** | Navigate from Hub to `COMMAND` | Mounts `.soc-command-center` with universe, KPI halo, and operational flanks | Universe, 10 KPI cells, left & right flanks mounted | **PASS** |
+| **Flank vs Top Sector Overlap (1440×900)** | Viewport 1440×900 | Flank `top: 117px` > Top Sector `bottom: 105px` ($\Delta y = 12\text{px}$) | `leftOverlapTop: false`, `rightOverlapTop: false` | **PASS** |
+| **Flank vs Top Sector Overlap (1920×1080)** | Viewport 1920×1080 | Flank `top: 117px` > Top Sector `bottom: 105px` ($\Delta y = 12\text{px}$) | `leftOverlapTop: false`, `rightOverlapTop: false` | **PASS** |
+| **EXPLICIT: Left Flank vs Telemetry Dock (1440×900)** | Viewport 1440×900 | Left flank ends strictly above telemetry dock (`left.bottom < dock.top`) | `leftOverlapTelemetry: false`, Clearance: $+11.5\text{px}$ | **PASS** |
+| **EXPLICIT: Right Flank vs Telemetry Dock (1440×900)** | Viewport 1440×900 | Right flank ends strictly above telemetry dock (`right.bottom < dock.top`) | `rightOverlapTelemetry: false`, Clearance: $+11.5\text{px}$ | **PASS** |
+| **EXPLICIT: Incident Canvas vs Telemetry Dock (1440×900)** | Viewport 1440×900 | Canvas field ends strictly above dock (`field.bottom < dock.top`) | `fieldOverlapTelemetry: false`, Clearance: $+8.5\text{px}$ | **PASS** |
+| **EXPLICIT: Stream Header & Actions Clearance (1440×900)** | Viewport 1440×900 | Heading and action controls have zero overlap with flanks | `leftOverlapHeader: false`, `rightOverlapActions: false` | **PASS** |
+| **EXPLICIT: Flank vs Telemetry Dock (1920×1080)** | Viewport 1920×1080 | Flanks end strictly above telemetry dock (`bottom < dock.top`) | `leftOverlapTelemetry: false`, `rightOverlapTelemetry: false`, Clearance: $+11.5\text{px}$ | **PASS** |
+| **Dynamic Stream Expansion Adaptation** | Click expand toggle `.stream-expand-toggle` | Flanks dynamically resize to maintain clearance above 240px expanded dock | `leftOverlap: false`, `rightOverlap: false`, Clearance: $+12\text{px}$ | **PASS** |
+| **Telemetry Controls Interactivity** | Click category pill `.stream-cat-btn` (`PROCESS` -> `ALL`) | Category filter applies cleanly and updates telemetry view | Category pill clicked, active state confirmed | **PASS** |
+| **Incident Node Clearance** | Both viewports (1440 & 1920) | Central corridor bounding ($30\%..70\%$ X, $24\%..78\%$ Y) avoids flanks & dock | `overlapsLeft: false`, `overlapsRight: false`, `overlapsTop: false`, `overlapsDock: false` | **PASS** |
 | **Single Return Button in Halo** | Overview Header | Exactly 1 `.hub-return-btn` rendered in DOM | `backButtonCount: 1` | **PASS** |
 | **Incident Selection Drill-Down** | Click incident card `.command-incident-card` | Mounts focused `InvestigationHub` with active tabs | Mounted `InvestigationHub`, title: "Operation BlackTide — ALPHV Ransomware Compromise", tab: ATTACK GRAPH | **PASS** |
 | **Level 2 Overview Return** | Click `.inv-back-btn` / Press `Escape` | Collapses focused overlay and restores Command Center overview (`workspace: 'COMMAND', selectedIncidentId: null`) | `isRestored: true`, `workspace: 'COMMAND'`, `selectedIncidentId: null` | **PASS** |
@@ -730,7 +760,7 @@ Inspection via `scripts/inspect-hub-stage5.cjs` evaluated geometry, bounding box
 
 #### Suite Builds & Domain Tests
 - **TypeScript Typecheck**: `npx tsc --noEmit` -> **0 errors (Exit Code 0)**.
-- **Production Build**: `npm run build` -> **Built successfully in 1.16s (Exit Code 0)**.
+- **Production Build**: `npm run build` -> **Built successfully in 1.26s (Exit Code 0)**.
 - **SOC Navigation Suite**: `npx tsx scripts/test-soc-navigation.ts` -> **7/7 suites passed (Exit Code 0)**.
 - **Stored Data Preservation**: 100% preservation verified across all stores in `es-spatial-db` v13. Zero records cleared, zero reseeding events.
 
@@ -739,12 +769,12 @@ Inspection via `scripts/inspect-hub-stage5.cjs` evaluated geometry, bounding box
 ### 5. Screenshots (Command Center Views)
 
 #### Viewport: 1440×900
-- **Before**: `docs/screenshots/stage5_command_before_1440.png` (Flank vertical collision with top sector, duplicate return buttons, erratic KPI cell heights)
-- **After**: `docs/screenshots/stage5_command_after_1440.png` (Aligned flanks, single return button, uniform 48px KPI halo, corridor-bounded incident nodes)
+- **Before**: `docs/screenshots/stage5_command_before_1440.png` (Flanks overlapping bottom telemetry dock by $>114\text{px}$, covering stream header and controls)
+- **After**: `docs/screenshots/stage5_command_after_1440.png` (Telemetry dock has dedicated reserved space, flanks end $+11.5\text{px}$ above dock, all telemetry controls fully visible)
 
 #### Viewport: 1920×1080
-- **Before**: `docs/screenshots/stage5_command_before_1920.png` (Unconstrained metrics, flank collision at top boundary)
-- **After**: `docs/screenshots/stage5_command_after_1920.png` (High-definition operational layout, verified multi-tier navigation)
+- **Before**: `docs/screenshots/stage5_command_before_1920.png` (Flanks extended down to bottom: 56px, collision with telemetry feed)
+- **After**: `docs/screenshots/stage5_command_after_1920.png` (Measured layout bounds, full clearance above telemetry feed, clean high-definition layout)
 
 
 

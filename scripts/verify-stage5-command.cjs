@@ -164,15 +164,16 @@ async function runStage5CommandCenterSuite() {
     })()`);
     await new Promise(r => setTimeout(r, 1200));
 
-    // Inject temporary uncorrected styles to capture exact "BEFORE" state (flanks at top: 110px, jagged metrics)
+    // Inject temporary uncorrected styles to capture exact "BEFORE" state (flanks at top: 110px, bottom: 56px overlapping telemetry dock)
     await evalJson(`(() => {
       const style = document.createElement('style');
       style.id = 'temp-before-styles';
       style.innerHTML = \`
-        .soc-left-flank { top: 110px !important; }
-        .soc-right-flank { top: 110px !important; }
+        .soc-left-flank { top: 110px !important; bottom: 56px !important; max-height: none !important; }
+        .soc-right-flank { top: 110px !important; bottom: 56px !important; max-height: none !important; }
         .kpi-cell { height: auto !important; min-height: 52px !important; gap: 4px !important; }
         .wings-toggle-btn { height: auto !important; }
+        .inc-universe-field { top: 0 !important; bottom: 0 !important; }
       \`;
       document.head.appendChild(style);
     })()`);
@@ -211,6 +212,10 @@ async function runStage5CommandCenterSuite() {
       const topSector = document.querySelector('.soc-top-sector');
       const leftFlank = document.querySelector('.soc-left-flank');
       const rightFlank = document.querySelector('.soc-right-flank');
+      const bottomStream = document.querySelector('.soc-bottom-stream');
+      const streamHeader = document.querySelector('.stream-header');
+      const streamActions = document.querySelector('.stream-actions');
+      const field = document.querySelector('.inc-universe-field');
       const backBtns = Array.from(document.querySelectorAll('.hub-return-btn'));
       const nodes = Array.from(document.querySelectorAll('.inc-node'));
       const kpiCells = Array.from(document.querySelectorAll('.kpi-cell'));
@@ -219,22 +224,39 @@ async function runStage5CommandCenterSuite() {
       const topRect = topSector?.getBoundingClientRect();
       const leftRect = leftFlank?.getBoundingClientRect();
       const rightRect = rightFlank?.getBoundingClientRect();
+      const streamRect = bottomStream?.getBoundingClientRect();
+      const headerRect = streamHeader?.getBoundingClientRect();
+      const actionsRect = streamActions?.getBoundingClientRect();
+      const fieldRect = field?.getBoundingClientRect();
 
-      // Check overlap: leftFlank top vs topSector bottom
+      // Check overlap: flanks top vs topSector bottom
       const leftOverlapTop = leftRect && topRect ? (leftRect.top < topRect.bottom) : false;
       const rightOverlapTop = rightRect && topRect ? (rightRect.top < topRect.bottom) : false;
 
-      // Check incident node positions vs flanks
+      // EXPLICIT ASSERTIONS: Flanks and canvas vs Telemetry Dock
+      const leftOverlapTelemetry = leftRect && streamRect ? (leftRect.bottom > streamRect.top) : false;
+      const rightOverlapTelemetry = rightRect && streamRect ? (rightRect.bottom > streamRect.top) : false;
+      const fieldOverlapTelemetry = fieldRect && streamRect ? (fieldRect.bottom > streamRect.top) : false;
+      const leftOverlapHeader = leftRect && headerRect ? (leftRect.bottom > headerRect.top) : false;
+      const rightOverlapActions = rightRect && actionsRect ? (rightRect.bottom > actionsRect.top) : false;
+
+      const leftClearanceTelemetry = streamRect && leftRect ? (streamRect.top - leftRect.bottom) : null;
+      const rightClearanceTelemetry = streamRect && rightRect ? (streamRect.top - rightRect.bottom) : null;
+      const fieldClearanceTelemetry = streamRect && fieldRect ? (streamRect.top - fieldRect.bottom) : null;
+
+      // Check incident node positions vs flanks & dock
       const nodeAudits = nodes.map(n => {
         const r = n.getBoundingClientRect();
         const overlapsLeft = leftRect ? (r.left < leftRect.right) : false;
         const overlapsRight = rightRect ? (r.right > rightRect.left) : false;
         const overlapsTop = topRect ? (r.top < topRect.bottom) : false;
+        const overlapsDock = streamRect ? (r.bottom > streamRect.top) : false;
         return {
           title: n.querySelector('.inc-label-title')?.textContent?.trim(),
           overlapsLeft,
           overlapsRight,
-          overlapsTop
+          overlapsTop,
+          overlapsDock
         };
       });
 
@@ -245,6 +267,14 @@ async function runStage5CommandCenterSuite() {
         backButtonCount: backBtns.length,
         leftOverlapTop,
         rightOverlapTop,
+        leftOverlapTelemetry,
+        rightOverlapTelemetry,
+        fieldOverlapTelemetry,
+        leftOverlapHeader,
+        rightOverlapActions,
+        leftClearanceTelemetry,
+        rightClearanceTelemetry,
+        fieldClearanceTelemetry,
         nodeAudits,
         hasHScroll: document.body.scrollWidth > document.body.clientWidth,
         hasVScroll: document.body.scrollHeight > document.body.clientHeight
@@ -255,9 +285,58 @@ async function runStage5CommandCenterSuite() {
     if (!audit1440.isOverviewOpen) throw new Error('Command Center failed to open overview mode');
     if (audit1440.leftOverlapTop || audit1440.rightOverlapTop) throw new Error('Flanks overlap top sector at 1440x900');
     if (audit1440.backButtonCount !== 1) throw new Error(`Expected exactly 1 return button, got ${audit1440.backButtonCount}`);
-    if (audit1440.nodeAudits.some(n => n.overlapsLeft || n.overlapsRight || n.overlapsTop)) {
-      throw new Error('Incident nodes overlap panels at 1440x900');
+    
+    // Explicit flank-versus-telemetry assertions
+    if (audit1440.leftOverlapTelemetry) throw new Error(`Left flank overlaps bottom telemetry dock at 1440x900 (Clearance: ${audit1440.leftClearanceTelemetry}px)`);
+    if (audit1440.rightOverlapTelemetry) throw new Error(`Right flank overlaps bottom telemetry dock at 1440x900 (Clearance: ${audit1440.rightClearanceTelemetry}px)`);
+    if (audit1440.fieldOverlapTelemetry) throw new Error(`Incident canvas overlaps bottom telemetry dock at 1440x900 (Clearance: ${audit1440.fieldClearanceTelemetry}px)`);
+    if (audit1440.leftOverlapHeader) throw new Error('Left flank overlaps telemetry stream header at 1440x900');
+    if (audit1440.rightOverlapActions) throw new Error('Right flank overlaps telemetry stream actions/controls at 1440x900');
+
+    if (audit1440.nodeAudits.some(n => n.overlapsLeft || n.overlapsRight || n.overlapsTop || n.overlapsDock)) {
+      throw new Error('Incident nodes overlap panels or telemetry dock at 1440x900');
     }
+
+    // Verify telemetry controls interactivity
+    const catClicked = await evalJson(`(() => {
+      const btn = Array.from(document.querySelectorAll('.stream-cat-btn')).find(b => b.textContent.includes('PROCESS'));
+      if (btn) { btn.click(); return true; }
+      return false;
+    })()`);
+    if (!catClicked) throw new Error('Failed to click telemetry PROCESS category pill');
+    await new Promise(r => setTimeout(r, 200));
+
+    // Reset back to ALL category
+    await evalJson(`(() => {
+      const btn = Array.from(document.querySelectorAll('.stream-cat-btn')).find(b => b.textContent.includes('ALL'));
+      if (btn) btn.click();
+    })()`);
+    await new Promise(r => setTimeout(r, 200));
+
+    // Verify dynamic adaptation when telemetry stream expands
+    console.log('  Testing dynamic adaptation when telemetry stream expands at 1440x900...');
+    await evalJson(`document.querySelector('.stream-expand-toggle')?.click()`);
+    await new Promise(r => setTimeout(r, 400));
+
+    const expandedAudit1440 = await evalJson(`(() => {
+      const left = document.querySelector('.soc-left-flank')?.getBoundingClientRect();
+      const right = document.querySelector('.soc-right-flank')?.getBoundingClientRect();
+      const dock = document.querySelector('.soc-bottom-stream')?.getBoundingClientRect();
+      return {
+        leftOverlap: (left && dock) ? (left.bottom > dock.top) : false,
+        rightOverlap: (right && dock) ? (right.bottom > dock.top) : false,
+        leftClearance: (left && dock) ? (dock.top - left.bottom) : null,
+        rightClearance: (right && dock) ? (dock.top - right.bottom) : null
+      };
+    })()`);
+    console.log('  Expanded Stream Audit 1440x900:', expandedAudit1440);
+    if (expandedAudit1440.leftOverlap || expandedAudit1440.rightOverlap) {
+      throw new Error('Flanks overlap expanded telemetry dock at 1440x900');
+    }
+
+    // Collapse back
+    await evalJson(`document.querySelector('.stream-expand-toggle')?.click()`);
+    await new Promise(r => setTimeout(r, 400));
 
     // Capture AFTER 1440x900
     const shotAfter1440 = await send('Page.captureScreenshot', { format: 'png' });
@@ -277,22 +356,46 @@ async function runStage5CommandCenterSuite() {
       const topSector = document.querySelector('.soc-top-sector')?.getBoundingClientRect();
       const leftRect = document.querySelector('.soc-left-flank')?.getBoundingClientRect();
       const rightRect = document.querySelector('.soc-right-flank')?.getBoundingClientRect();
+      const bottomStream = document.querySelector('.soc-bottom-stream')?.getBoundingClientRect();
+      const streamHeader = document.querySelector('.stream-header')?.getBoundingClientRect();
+      const streamActions = document.querySelector('.stream-actions')?.getBoundingClientRect();
+      const field = document.querySelector('.inc-universe-field')?.getBoundingClientRect();
       const nodes = Array.from(document.querySelectorAll('.inc-node'));
 
       const leftOverlapTop = leftRect && topSector ? (leftRect.top < topSector.bottom) : false;
       const rightOverlapTop = rightRect && topSector ? (rightRect.top < topSector.bottom) : false;
 
+      // EXPLICIT ASSERTIONS: Flanks and canvas vs Telemetry Dock
+      const leftOverlapTelemetry = leftRect && bottomStream ? (leftRect.bottom > bottomStream.top) : false;
+      const rightOverlapTelemetry = rightRect && bottomStream ? (rightRect.bottom > bottomStream.top) : false;
+      const fieldOverlapTelemetry = field && bottomStream ? (field.bottom > bottomStream.top) : false;
+      const leftOverlapHeader = leftRect && streamHeader ? (leftRect.bottom > streamHeader.top) : false;
+      const rightOverlapActions = rightRect && streamActions ? (rightRect.bottom > streamActions.top) : false;
+
+      const leftClearanceTelemetry = bottomStream && leftRect ? (bottomStream.top - leftRect.bottom) : null;
+      const rightClearanceTelemetry = bottomStream && rightRect ? (bottomStream.top - rightRect.bottom) : null;
+      const fieldClearanceTelemetry = bottomStream && field ? (bottomStream.top - field.bottom) : null;
+
       const nodeAudits = nodes.map(n => {
         const r = n.getBoundingClientRect();
         return {
           overlapsLeft: leftRect ? (r.left < leftRect.right) : false,
-          overlapsRight: rightRect ? (r.right > rightRect.left) : false
+          overlapsRight: rightRect ? (r.right > rightRect.left) : false,
+          overlapsDock: bottomStream ? (r.bottom > bottomStream.top) : false
         };
       });
 
       return {
         leftOverlapTop,
         rightOverlapTop,
+        leftOverlapTelemetry,
+        rightOverlapTelemetry,
+        fieldOverlapTelemetry,
+        leftOverlapHeader,
+        rightOverlapActions,
+        leftClearanceTelemetry,
+        rightClearanceTelemetry,
+        fieldClearanceTelemetry,
         nodeAudits,
         hasHScroll: document.body.scrollWidth > document.body.clientWidth,
         hasVScroll: document.body.scrollHeight > document.body.clientHeight
@@ -301,6 +404,17 @@ async function runStage5CommandCenterSuite() {
 
     console.log('Audit 1920x1080 Results:', audit1920);
     if (audit1920.leftOverlapTop || audit1920.rightOverlapTop) throw new Error('Flanks overlap top sector at 1920x1080');
+
+    // Explicit flank-versus-telemetry assertions at 1920x1080
+    if (audit1920.leftOverlapTelemetry) throw new Error(`Left flank overlaps bottom telemetry dock at 1920x1080 (Clearance: ${audit1920.leftClearanceTelemetry}px)`);
+    if (audit1920.rightOverlapTelemetry) throw new Error(`Right flank overlaps bottom telemetry dock at 1920x1080 (Clearance: ${audit1920.rightClearanceTelemetry}px)`);
+    if (audit1920.fieldOverlapTelemetry) throw new Error(`Incident canvas overlaps bottom telemetry dock at 1920x1080 (Clearance: ${audit1920.fieldClearanceTelemetry}px)`);
+    if (audit1920.leftOverlapHeader) throw new Error('Left flank overlaps telemetry stream header at 1920x1080');
+    if (audit1920.rightOverlapActions) throw new Error('Right flank overlaps telemetry stream actions/controls at 1920x1080');
+
+    if (audit1920.nodeAudits.some(n => n.overlapsLeft || n.overlapsRight || n.overlapsDock)) {
+      throw new Error('Incident nodes overlap panels or telemetry dock at 1920x1080');
+    }
 
     const shotAfter1920 = await send('Page.captureScreenshot', { format: 'png' });
     const bufAfter1920 = Buffer.from(shotAfter1920.data, 'base64');

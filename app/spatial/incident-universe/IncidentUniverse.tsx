@@ -70,6 +70,15 @@ export default function IncidentUniverse({
   }, []);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [dockLayout, setDockLayout] = useState<{
+    headerBottom: number;
+    dockTop: number;
+    dockHeight: number;
+  }>({
+    headerBottom: 110,
+    dockTop: 640,
+    dockHeight: 160,
+  });
 
   // Determine which incident is focused (panel ID = incidentId for universe nodes)
   const focusedIncidentId = useMemo(() => {
@@ -156,11 +165,24 @@ export default function IncidentUniverse({
             cyberAudio.playModeSwitch();
             spatialTransform.setMode('METRICS');
           }}
+          onLayoutMeasure={setDockLayout}
         />
       )}
 
-      {/* Spatial field — incident nodes positioned absolutely */}
-      <div className="inc-universe-field" aria-label="Spatial incident field">
+      {/* Spatial field — incident nodes positioned absolutely within reserved spatial area */}
+      <div
+        className={`inc-universe-field ${renderFlanks ? 'has-reserved-dock' : ''}`}
+        aria-label="Spatial incident field"
+        style={
+          renderFlanks
+            ? ({
+                top: `${dockLayout.headerBottom + 6}px`,
+                bottom: `${dockLayout.dockHeight + 22}px`,
+                height: 'auto',
+              } as React.CSSProperties)
+            : undefined
+        }
+      >
         {/* Grid reference lines */}
         <div className="inc-field-grid" aria-hidden="true" />
 
@@ -263,7 +285,17 @@ export default function IncidentUniverse({
 
       {/* Keyboard hint (only in COMMAND mode, no focus) */}
       {mode === 'COMMAND' && !isFocused && (
-        <div className="inc-universe-hint" aria-hidden="true">
+        <div
+          className="inc-universe-hint"
+          aria-hidden="true"
+          style={
+            renderFlanks
+              ? ({
+                  bottom: `${dockLayout.dockHeight + 22}px`,
+                } as React.CSSProperties)
+              : undefined
+          }
+        >
           Click an incident to focus &nbsp;·&nbsp; [1–{Math.min(8, spatialIncidents.length)}] keyboard focus &nbsp;·&nbsp; [ESC] return to Hub
         </div>
       )}

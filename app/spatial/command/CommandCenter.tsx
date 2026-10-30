@@ -20,8 +20,10 @@
  */
 
 'use client';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import type { Incident } from '../../core/models/incident';
+
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 import type { Asset, IOC } from '../../core/models/entity';
 import type { ResponseAction } from '../../core/models/response';
 import type { SecurityOperationsSnapshot, ThreatLevel } from '../../core/security/threat-level-service';
@@ -83,6 +85,7 @@ interface CommandCenterProps {
   onOpenEvidence?: () => void;
   onClose?: () => void;
   onOpenMetrics?: () => void;
+  onLayoutMeasure?: (bounds: { headerBottom: number; dockTop: number; dockHeight: number }) => void;
 }
 
 const SIMULATION_TEMPLATES = [
@@ -166,7 +169,50 @@ export default function CommandCenter({
   onOpenEvidence,
   onClose,
   onOpenMetrics,
+  onLayoutMeasure,
 }: CommandCenterProps) {
+  const topSectorRef = useRef<HTMLElement>(null);
+  const bottomStreamRef = useRef<HTMLElement>(null);
+  const leftFlankRef = useRef<HTMLElement>(null);
+  const rightFlankRef = useRef<HTMLElement>(null);
+
+  const [layoutBounds, setLayoutBounds] = useState<{
+    headerBottom: number;
+    dockTop: number;
+    dockHeight: number;
+  }>({
+    headerBottom: 110,
+    dockTop: 640,
+    dockHeight: 160,
+  });
+
+  const updateMeasurements = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const topEl = topSectorRef.current;
+    const bottomEl = bottomStreamRef.current;
+
+    const topRect = topEl?.getBoundingClientRect();
+    const bottomRect = bottomEl?.getBoundingClientRect();
+
+    const viewportHeight = window.innerHeight;
+    const headerBottom = topRect ? Math.round(topRect.bottom) : 110;
+    const dockTop = bottomRect ? Math.round(bottomRect.top) : (viewportHeight - 160);
+    const dockHeight = bottomRect ? Math.round(bottomRect.height) : 160;
+
+    setLayoutBounds((prev) => {
+      if (
+        prev.headerBottom === headerBottom &&
+        prev.dockTop === dockTop &&
+        prev.dockHeight === dockHeight
+      ) {
+        return prev;
+      }
+      return { headerBottom, dockTop, dockHeight };
+    });
+
+    onLayoutMeasure?.({ headerBottom, dockTop, dockHeight });
+  }, [onLayoutMeasure]);
+
   const [socSnapshot, setSocSnapshot] = useState<SocOperationalSnapshot | null>(null);
 
   // Collapsible flank wings to let the analyst view unobstructed universe when desired
@@ -182,6 +228,23 @@ export default function CommandCenter({
   const [activityExpanded, setActivityExpanded] = useState(false);
   const [eventCategoryFilter, setEventCategoryFilter] = useState<string>('ALL');
   const [isSimulating, setIsSimulating] = useState(false);
+
+  useIsomorphicLayoutEffect(() => {
+    updateMeasurements();
+
+    const ro = new ResizeObserver(() => {
+      updateMeasurements();
+    });
+
+    if (topSectorRef.current) ro.observe(topSectorRef.current);
+    if (bottomStreamRef.current) ro.observe(bottomStreamRef.current);
+    window.addEventListener('resize', updateMeasurements);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateMeasurements);
+    };
+  }, [updateMeasurements, activityExpanded, wingsMinimized]);
 
   // Evidence Operational Metrics
   const [evidenceStats, setEvidenceStats] = useState<{
@@ -494,13 +557,34 @@ export default function CommandCenter({
     );
   }
 
+  const flankTop = layoutBounds.headerBottom + 12;
+  const flankBottom = layoutBounds.dockHeight + 24;
+  const flankMaxHeight = Math.max(160, layoutBounds.dockTop - flankTop - 12);
+
+  const leftFlankStyle: React.CSSProperties = {
+    top: `${flankTop}px`,
+    bottom: `${flankBottom}px`,
+    maxHeight: `${flankMaxHeight}px`,
+  };
+
+  const rightFlankStyle: React.CSSProperties = {
+    top: `${flankTop}px`,
+    bottom: `${flankBottom}px`,
+    maxHeight: `${flankMaxHeight}px`,
+  };
+
   return (
     <div
       className={`soc-command-center tier-${perfMode.toLowerCase()} ${wingsMinimized ? 'wings-minimized' : ''}`}
       aria-label="SOC Command Center Operational Layer"
+      style={{
+        '--soc-header-bottom': `${layoutBounds.headerBottom}px`,
+        '--soc-dock-top': `${layoutBounds.dockTop}px`,
+        '--soc-dock-height': `${layoutBounds.dockHeight}px`,
+      } as React.CSSProperties}
     >
       {/* ─── TOP SECTOR: THREAT STATE BEACON & TELEMETRY ARC ─── */}
-      <header className="soc-top-sector">
+      <header className="soc-top-sector" ref={topSectorRef}>
         <div className="soc-threat-beacon-wrap">
           <div
             className={`soc-threat-beacon level-${snapshot.threatLevel.toLowerCase()}`}
@@ -810,7 +894,7 @@ export default function CommandCenter({
 
       {/* ─── LEFT FLANK: ACTIVE INCIDENT COMMAND / ALERT PILLAR ─── */}
       {!wingsMinimized && (
-        <aside className="soc-left-flank" aria-label="Incident and Alert Command View">
+        <aside className="soc-left-flank" style={leftFlankStyle} ref={leftFlankRef} aria-label="Incident and Alert Command View">
           <div className="flank-header">
             <div className="flank-mode-selector">
               <button
@@ -1008,7 +1092,7 @@ export default function CommandCenter({
 
       {/* ─── RIGHT FLANK: ASSET POSTURE & SOAR RESPONSE WINGS ─── */}
       {!wingsMinimized && (
-        <aside className="soc-right-flank" aria-label="Environment Posture and Response">
+        <aside className="soc-right-flank" style={rightFlankStyle} ref={rightFlankRef} aria-label="Environment Posture and Response">
           {/* Top Arc: Asset Posture */}
           <section className="flank-pod asset-pod">
             <div className="pod-header">
@@ -1133,7 +1217,7 @@ export default function CommandCenter({
       )}
 
       {/* ─── BOTTOM SECTOR: LIVE OPERATIONAL ACTIVITY STREAM ─── */}
-      <footer className={`soc-bottom-stream ${activityExpanded ? 'is-expanded' : ''}`}>
+      <footer className={`soc-bottom-stream ${activityExpanded ? 'is-expanded' : ''}`} ref={bottomStreamRef}>
         <div className="stream-header" onClick={() => setActivityExpanded((prev) => !prev)}>
           <div className="stream-title-group">
             <span className="stream-pulse-dot" />

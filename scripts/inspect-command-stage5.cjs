@@ -101,6 +101,9 @@ async function inspectCommandCenter() {
       const header = document.querySelector('.soc-top-sector');
       const leftFlank = document.querySelector('.soc-left-flank');
       const rightFlank = document.querySelector('.soc-right-flank');
+      const telemetryDock = document.querySelector('.soc-bottom-stream');
+      const streamHeader = document.querySelector('.stream-header');
+      const streamActions = document.querySelector('.stream-actions');
       const backBtn = document.querySelector('.hub-return-btn');
       const hint = document.querySelector('.inc-universe-hint');
       const nodes = Array.from(document.querySelectorAll('.inc-node')).map(n => {
@@ -121,8 +124,15 @@ async function inspectCommandCenter() {
         hasUniverse: !!universe,
         hasCmdCenter: !!cmdCenter,
         hasHeader: !!header,
+        headerRect: header ? header.getBoundingClientRect() : null,
         hasLeftFlank: !!leftFlank,
+        leftFlankRect: leftFlank ? leftFlank.getBoundingClientRect() : null,
         hasRightFlank: !!rightFlank,
+        rightFlankRect: rightFlank ? rightFlank.getBoundingClientRect() : null,
+        hasTelemetryDock: !!telemetryDock,
+        telemetryDockRect: telemetryDock ? telemetryDock.getBoundingClientRect() : null,
+        streamHeaderRect: streamHeader ? streamHeader.getBoundingClientRect() : null,
+        streamActionsRect: streamActions ? streamActions.getBoundingClientRect() : null,
         hasBackBtn: !!backBtn,
         backBtnRect: backBtn ? backBtn.getBoundingClientRect() : null,
         hasHint: !!hint,
@@ -131,6 +141,7 @@ async function inspectCommandCenter() {
         nodes,
         wrapperClass: document.querySelector('.soc-spatial-wrapper')?.className,
         universeRect: universe ? universe.getBoundingClientRect() : null,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
         scrollWidth: document.body.scrollWidth,
         clientWidth: document.body.clientWidth,
         scrollHeight: document.body.scrollHeight,
@@ -156,3 +167,4 @@ async function inspectCommandCenter() {
 }
 
 inspectCommandCenter().catch(console.error);
+
