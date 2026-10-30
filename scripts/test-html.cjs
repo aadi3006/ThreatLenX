@@ -15,7 +15,7 @@ async function test() {
 
   try {
     await new Promise(r => setTimeout(r, 3000));
-    let targets = await new Promise((res, rej) => {
+    const targets = await new Promise((res, rej) => {
       http.get(`http://127.0.0.1:${port}/json`, (r) => {
         let d = '';
         r.on('data', c => d += c);

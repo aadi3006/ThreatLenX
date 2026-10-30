@@ -1311,6 +1311,42 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 - Add `"ignorePatterns": ["spatial/**"]` to `.oxlintrc.json` (or CLI configuration).
 - **Result**: Instantly eliminates **1,125 false/duplicate errors (46.8% reduction)** with zero code edits.
 
+---
+
+## ThreatLenX Lint Cleanup: Batch 1 Execution & Verification
+
+### 1. Scope & Execution
+- **Root Symlink Exclusion**: Added `"spatial/**"` to `.oxlintrc.json` `ignorePatterns`. Oxlint now ignores the duplicate root symlink `spatial/` while continuing to lint all 57 real files under `app/spatial/**`. All rules, plugins, and options in `.oxlintrc.json` were 100% preserved.
+- **Fixed All 8 `prefer-const` Violations Across 4 Files**:
+  1. `app/spatial/investigation/attack-graph/AttackGraph.tsx` (Line 363: `const cx = ...`)
+  2. `scripts/test-hub-stage5.cjs` (Lines 313, 322, 334, 343, 352: `const currentFocus`, `const nextFocus`, `const afterDown`, `const afterTab`, `const afterLeft`)
+  3. `scripts/test-html.cjs` (Line 18: `const targets = ...`)
+  4. `scripts/test-hydrate.cjs` (Line 20: `const targets = ...`)
+
+---
+
+### 2. Before / After Metrics
+
+| Metric | Before Batch 1 | After Symlink Exclusion | After `prefer-const` Fix | Net Reduction |
+| :--- | :---: | :---: | :---: | :---: |
+| **Total Reported Errors** | **2,402** | 1,277 | **1,269** | **-1,133 errors (-47.2%)** |
+| `eslint(prefer-const)` | 8 | 8 | **0** | **-8 errors (100% resolved)** |
+| Phantom `typescript(TS*)` errors | 464 | 0 | **0** | **-464 phantom errors** |
+| Symlink duplicate errors | 661 | 0 | **0** | **-661 duplicate errors** |
+| **Lint Exit Status** | Exit Code 1 | Exit Code 1 | Exit Code 1 | 1,269 remaining unique errors |
+
+---
+
+### 3. Build & Runtime Verification
+- **TypeScript (`npx tsc --noEmit`)**: **PASS (0 errors)**.
+- **Production Builds**:
+  - `npm run build` (`vinext build`): **PASS** (all chunks generated).
+  - `npm run build:vercel` (`vite build`): **PASS** (`dist/vercel/index.html` built).
+- **Navigation Verification (`scripts/test-soc-navigation.ts`)**: **7/7 SUITES PASSED**.
+- **Evidence Integrity Regression (`scripts/test-evidence-integrity-persistence.cjs`)**: **3/3 SUITES PASSED**.
+- **Application Behavior & Stored Data**: Zero UI changes, zero behavior change, zero storage modifications.
+
+
 
 
 

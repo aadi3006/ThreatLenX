@@ -360,7 +360,7 @@ function computeCausalLayout(
   const cornerMarginY = CARD_H * 0.85;
 
   result.forEach((pos) => {
-    let cx = Math.max(minX, Math.min(maxX, pos.x));
+    const cx = Math.max(minX, Math.min(maxX, pos.x));
     let cy = Math.max(minY, Math.min(maxY, pos.y));
 
     // Corner exclusion: Prevent nodes from appearing in tight screen corners

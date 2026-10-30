@@ -310,7 +310,7 @@ async function runStage5HubSuite() {
     console.log('\n[4/8] Verifying keyboard selection (Arrows, Tab, Enter, Space)...');
 
     // Check currently focused index
-    let currentFocus = await evalJson(`(() => {
+    const currentFocus = await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       return nodes.findIndex(n => n.classList.contains('state-focused'));
     })()`);
@@ -319,7 +319,7 @@ async function runStage5HubSuite() {
     // Test ArrowDown / ArrowRight / Tab
     await pressKey('ArrowRight', 'ArrowRight', 39);
     await new Promise(r => setTimeout(r, 150));
-    let nextFocus = await evalJson(`(() => {
+    const nextFocus = await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       return nodes.findIndex(n => n.classList.contains('state-focused'));
     })()`);
@@ -331,7 +331,7 @@ async function runStage5HubSuite() {
     // Test ArrowDown
     await pressKey('ArrowDown', 'ArrowDown', 40);
     await new Promise(r => setTimeout(r, 150));
-    let afterDown = await evalJson(`(() => {
+    const afterDown = await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       return nodes.findIndex(n => n.classList.contains('state-focused'));
     })()`);
@@ -340,7 +340,7 @@ async function runStage5HubSuite() {
     // Test Tab
     await pressKey('Tab', 'Tab', 9);
     await new Promise(r => setTimeout(r, 150));
-    let afterTab = await evalJson(`(() => {
+    const afterTab = await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       return nodes.findIndex(n => n.classList.contains('state-focused'));
     })()`);
@@ -349,7 +349,7 @@ async function runStage5HubSuite() {
     // Test ArrowLeft
     await pressKey('ArrowLeft', 'ArrowLeft', 37);
     await new Promise(r => setTimeout(r, 150));
-    let afterLeft = await evalJson(`(() => {
+    const afterLeft = await evalJson(`(() => {
       const nodes = Array.from(document.querySelectorAll('.hub-workspace-node'));
       return nodes.findIndex(n => n.classList.contains('state-focused'));
     })()`);
