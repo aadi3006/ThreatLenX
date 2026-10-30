@@ -26,7 +26,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { PerformanceMode } from '../performance-mode';
 import type {
   Evidence,
@@ -268,13 +268,21 @@ export default function EvidenceWorkspace({
     return evidenceList.find((e) => e.id === selectedEvidenceId) || null;
   }, [evidenceList, selectedEvidenceId]);
 
+  const prevEvidenceIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!selectedEvidence) {
       setCustodyLog([]);
       setAnnotations([]);
       setPreviewBlobContent(null);
       setIntegrityStatus({ verifying: false });
+      prevEvidenceIdRef.current = null;
       return;
+    }
+
+    if (prevEvidenceIdRef.current !== selectedEvidence.id) {
+      setIntegrityStatus({ verifying: false });
+      prevEvidenceIdRef.current = selectedEvidence.id;
     }
 
     async function loadEvidenceDetails() {
@@ -311,7 +319,6 @@ export default function EvidenceWorkspace({
     }
 
     void loadEvidenceDetails();
-    setIntegrityStatus({ verifying: false });
   }, [selectedEvidence]);
 
   // Filtered evidence items by search query

@@ -6,4 +6,4 @@ export const metadata: Metadata = {
   description: 'Offline-first spatial Security Operations Center (SOC) platform for real-time threat detection, attack graph investigation, hypothesis hunting, and incident response.',
 };
 export const viewport = {width:'device-width',initialScale:1,viewportFit:'cover',themeColor:'#000403'};
-export default function RootLayout({children}:{children:React.ReactNode}) { return <html lang="en" className="dark"><body>{children}</body></html> }
+export default function RootLayout({children}:{children:React.ReactNode}) { return <html lang="en" className="dark" suppressHydrationWarning><body>{children}</body></html> }

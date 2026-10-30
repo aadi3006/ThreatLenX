@@ -152,16 +152,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
   const handleExit = () => {
     cyberAudio.playClick();
     triggerCollapse(() => {
-      const state = socNavStore.getState();
-      const prevWs = state.previousScreen?.workspace;
-      const historyHasCommand = state.history.some((h) => h.workspace === 'COMMAND');
-      if (state.workspace === 'COMMAND' || prevWs === 'COMMAND' || historyHasCommand) {
-        socNavStore.goToWorkspace('COMMAND', { incidentId: null });
-        onExitFocus();
-      } else {
-        socNavStore.navigateBack();
-        onExitFocus();
-      }
+      onExitFocus();
     });
   };
 
@@ -190,17 +181,12 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
         e.preventDefault();
         cyberAudio.playClick();
         const state = socNavStore.getState();
-        const prevWs = state.previousScreen?.workspace;
-        const historyHasCommand = state.history.some((h) => h.workspace === 'COMMAND');
         if (state.activeInvestigationPanel !== null) {
           socNavStore.navigateBack();
-        } else if (state.workspace === 'COMMAND' || prevWs === 'COMMAND' || historyHasCommand) {
+        } else {
           triggerCollapse(() => {
-            socNavStore.goToWorkspace('COMMAND', { incidentId: null });
             onExitFocus();
           });
-        } else {
-          socNavStore.navigateBack();
         }
       }
     };
@@ -283,7 +269,12 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
             onClick={handleExit}
             title="Return to Command Center / Incidents [ESC]"
           >
-            <ArrowLeft size={11} /> {socNavStore.getState().workspace === 'COMMAND' || socNavStore.getState().previousScreen?.workspace === 'COMMAND' ? 'COMMAND CENTER' : 'INCIDENTS'}
+            <ArrowLeft size={11} /> {
+              socNavStore.getState().previousScreen?.workspace === 'CASES' ? 'CASES' :
+              socNavStore.getState().previousScreen?.workspace === 'HUNTING' ? 'HUNTING' :
+              socNavStore.getState().previousScreen?.workspace === 'EVIDENCE' ? 'EVIDENCE' :
+              'COMMAND CENTER'
+            }
           </button>
 
           {/* INCIDENT ID */}

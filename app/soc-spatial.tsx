@@ -89,11 +89,7 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
               incidentId={effectiveIncidentId}
               onRegister={handleRegisterPanel}
               onExitFocus={() => {
-                if (nav.previousScreen?.workspace === 'COMMAND' || nav.history.some((h) => h.workspace === 'COMMAND')) {
-                  socNavStore.goToWorkspace('COMMAND', { incidentId: null });
-                } else {
-                  handleReturnToHub();
-                }
+                socNavStore.navigateBack();
               }}
             />
           </div>

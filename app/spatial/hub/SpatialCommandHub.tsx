@@ -66,10 +66,10 @@ export function SpatialCommandHub({
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
 
-  // Dynamic canvas dimension tracking
+  // Dynamic canvas dimension tracking (fixed SSR baseline prevents hydration mismatch)
   const [dimensions, setDimensions] = useState<{ width: number; height: number }>({
-    width: typeof window !== 'undefined' ? Math.max(900, window.innerWidth - 64) : 1200,
-    height: typeof window !== 'undefined' ? Math.max(550, window.innerHeight - 80) : 700,
+    width: 1200,
+    height: 700,
   });
 
   useEffect(() => {
