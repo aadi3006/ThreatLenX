@@ -4087,8 +4087,8 @@ export class LocalProvider implements ISecurityProvider {
     evd.integrity.verified = isMatch;
     evd.integrity.verifiedAt = now;
     evd.integrity.verifiedBy = actor;
-    evd.updatedAt = now;
-    await put<Evidence>('evidence', evd);
+    // Evidence artifacts are immutable forensic records. Verification outcomes are recorded in
+    // append-only evidence_custody and audit_records without altering the preserved storage artifact.
 
     const custodyEntry: EvidenceCustodyEntry = {
       id: `custody-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -5086,7 +5086,7 @@ export class LocalProvider implements ISecurityProvider {
         textContent: 'Volatile memory triage of FINWS-027 verified injected thread in spoolsv.exe originating from powershell.exe (PID 4828). Outbound connection handles to 198.51.100.45:443 were active prior to network containment.',
         integrity: {
           algorithm: 'SHA-256',
-          hash: 'd5a0c7760fa8ee8cb77148a3064c5d2e032599b50b5550c608f6583959828d0c',
+          hash: '20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2',
           verified: true,
           verifiedAt: now,
           verifiedBy: 'analyst2',
