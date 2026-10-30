@@ -420,6 +420,7 @@ export class LocalProvider implements ISecurityProvider {
       this._evidence = await getAll<Evidence>('evidence');
       this._evidenceAnnotations = await getAll<EvidenceAnnotation>('evidence_annotations');
       this._evidenceCustody = await getAll<EvidenceCustodyEntry>('evidence_custody');
+      this._reconcileEvidenceIntegrityFromCustody();
     }
 
     // 2g. Check if threat intelligence store has been seeded (handles schema v7 -> v8 upgrade)
@@ -3714,7 +3715,19 @@ export class LocalProvider implements ISecurityProvider {
 
   async getEvidenceById(id: string): Promise<Evidence | null> {
     const found = this._evidence.find((e) => e.id === id || e.evidenceNumber === id);
-    return found ? clone(found) : null;
+    if (!found) return null;
+    if (this._evidenceCustody) {
+      const verifications = this._evidenceCustody
+        .filter((c) => c.evidenceId === found.id && c.action === 'INTEGRITY_VERIFIED')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      if (verifications.length > 0) {
+        const latest = verifications[0];
+        found.integrity.verified = (latest.metadata?.verified as boolean) ?? false;
+        found.integrity.verifiedAt = latest.timestamp;
+        found.integrity.verifiedBy = latest.actorId;
+      }
+    }
+    return clone(found);
   }
 
   async createEvidence(
@@ -4807,6 +4820,22 @@ export class LocalProvider implements ISecurityProvider {
     this._evidenceCustody     = await getAll<EvidenceCustodyEntry>('evidence_custody');
     this._threatIntel             = await getAll<ThreatIntelRecord>('threat_intel');
     this._threatIntelRelationships = await getAll<ThreatIntelRelationship>('threat_intel_relationships');
+    this._reconcileEvidenceIntegrityFromCustody();
+  }
+
+  private _reconcileEvidenceIntegrityFromCustody(): void {
+    if (!this._evidence || !this._evidenceCustody) return;
+    for (const evd of this._evidence) {
+      const verifications = this._evidenceCustody
+        .filter((c) => c.evidenceId === evd.id && c.action === 'INTEGRITY_VERIFIED')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      if (verifications.length > 0) {
+        const latest = verifications[0];
+        evd.integrity.verified = (latest.metadata?.verified as boolean) ?? false;
+        evd.integrity.verifiedAt = latest.timestamp;
+        evd.integrity.verifiedBy = latest.actorId;
+      }
+    }
   }
 
   private async _seedThreatHunts(): Promise<void> {
@@ -5146,6 +5175,34 @@ export class LocalProvider implements ISecurityProvider {
         toStatus: 'VALIDATED',
         source: 'ANALYST',
         reason: 'Memory extraction and volatility analysis documentation',
+      },
+      {
+        id: 'custody-seed-005',
+        evidenceId: 'evd-blacktide-001',
+        action: 'INTEGRITY_VERIFIED',
+        actorId: 'analyst2',
+        actorRole: 'L2_ANALYST',
+        timestamp: new Date(Date.now() - 4450000).toISOString(),
+        reason: 'Provenance verified: canonical SECURITY_EVENT "evt-raw-004" is present and authentic in SOC repository',
+        metadata: {
+          verified: true,
+          storedHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          computedHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        },
+      },
+      {
+        id: 'custody-seed-006',
+        evidenceId: 'evd-blacktide-003',
+        action: 'INTEGRITY_VERIFIED',
+        actorId: 'analyst2',
+        actorRole: 'L2_ANALYST',
+        timestamp: new Date(Date.now() - 2950000).toISOString(),
+        reason: 'SHA-256 integrity verified against text payload',
+        metadata: {
+          verified: true,
+          storedHash: '20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2',
+          computedHash: '20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2',
+        },
       },
     ];
 

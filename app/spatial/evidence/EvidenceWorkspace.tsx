@@ -297,6 +297,41 @@ export default function EvidenceWorkspace({
         setAnnotations(annos);
         setCaseFindings(findings);
 
+        // Restore verification feedback from latest custody history if present
+        const latestVerify = custody
+          .filter((c) => c.action === 'INTEGRITY_VERIFIED')
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+
+        if (latestVerify) {
+          const isVerified = (latestVerify.metadata?.verified as boolean) ?? false;
+          setIntegrityStatus({
+            verifying: false,
+            result: {
+              verified: isVerified,
+              message:
+                latestVerify.reason ||
+                (isVerified
+                  ? 'SHA-256 integrity verified against stored payload'
+                  : 'INTEGRITY MISMATCH: computed hash does not match stored hash'),
+              calculatedHash:
+                (latestVerify.metadata?.computedHash as string) ||
+                (latestVerify.metadata?.storedHash as string) ||
+                undefined,
+            },
+          });
+        } else if (selectedEvidence.integrity?.verifiedAt && selectedEvidence.integrity?.verified !== undefined) {
+          setIntegrityStatus({
+            verifying: false,
+            result: {
+              verified: selectedEvidence.integrity.verified,
+              message: selectedEvidence.integrity.verified
+                ? `Cryptographic seal verified by ${selectedEvidence.integrity.verifiedBy || 'system'} (${new Date(selectedEvidence.integrity.verifiedAt).toLocaleDateString()})`
+                : 'Cryptographic seal mismatch recorded',
+              calculatedHash: selectedEvidence.integrity.hash,
+            },
+          });
+        }
+
         if (selectedEvidence.type === 'FILE' && selectedEvidence.storageReference) {
           const blob = await securityService.getEvidenceBlob(selectedEvidence.storageReference);
           const mime = selectedEvidence.mimeType || '';

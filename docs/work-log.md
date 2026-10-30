@@ -1122,6 +1122,73 @@ Every workspace was programmatically measured using `getBoundingClientRect()` pa
 | `docs/screenshots/final_audit_journey5_detection_1440.png` | Detection Rules workspace showing rule diff and 4-metric dry-run simulation test |
 | `docs/screenshots/final_audit_1920_overview.png` | High-definition 1920×1080 overview verifying responsive layout and zero overlap |
 
+---
+
+## ThreatLenX Evidence Integrity Review & Refresh Persistence Verification
+
+### 1. Scope & Objective
+- Strictly review and harden evidence integrity verification and persistence across browser refresh.
+- Ensure integrity verification results accurately persist across page reloads using the append-only chain of custody history.
+- Test both existing stored evidence artifacts and fresh seed data.
+- Enforce strict cryptographic immutability: never overwrite an existing stored evidence hash to make verification pass.
+- Authentically detect, preserve, and display genuine cryptographic mismatches along with recalculated hashes.
+- Confirm the corrected seed hash for `evd-blacktide-003` matches its exact text payload.
+- Add an end-to-end regression test (`scripts/test-evidence-integrity-persistence.cjs`) validating verify → refresh → displayed result in an isolated browser profile.
+- Preserve all existing UI layout and primary database storage (`es-spatial-db` v13).
+
+---
+
+### 2. Implementation Changes
+
+1. **Exact Seed Hash Confirmation (`app/core/providers/local-provider.ts`)**:
+   - Confirmed that `evd-blacktide-003`'s text payload:
+     `Volatile memory triage of FINWS-027 verified injected thread in spoolsv.exe originating from powershell.exe (PID 4828). Outbound connection handles to 198.51.100.45:443 were active prior to network containment.`
+     hashes precisely via SHA-256 to `20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2`.
+   - Added baseline custody verification entries (`custody-seed-005` and `custody-seed-006`) to ensure baseline seed items carry verifiable provenance history.
+
+2. **In-Memory Custody Reconciler (`_reconcileEvidenceIntegrityFromCustody`)**:
+   - Added `_reconcileEvidenceIntegrityFromCustody()` to `LocalProvider` in `app/core/providers/local-provider.ts`.
+   - On hydration from IndexedDB (`_hydrateFromIdb` and `_seedEvidence`), and on `getEvidenceById()`, in-memory verification metadata (`integrity.verified`, `verifiedAt`, `verifiedBy`) is synced with the latest `INTEGRITY_VERIFIED` entry from `evidence_custody`.
+   - The stored artifact hash (`evd.integrity.hash`) is never modified or overwritten; genuine mismatches (`verified: false`) are preserved faithfully.
+
+3. **Workspace Verification State Restoration (`EvidenceWorkspace.tsx` & `IncidentEvidenceView.tsx`)**:
+   - In `EvidenceWorkspace.tsx` (`loadEvidenceDetails`):
+     - Queries `getEvidenceCustody` on mount and selection.
+     - Restores `integrityStatus.result` from the latest `INTEGRITY_VERIFIED` custody log entry.
+     - On page refresh, the verification feedback box (`✓ INTEGRITY MATCH:` or `⚠ MISMATCH DETECTED:`) is immediately restored without re-verification.
+     - Displays the recalculated hash on mismatch for analyst review while preserving the authentic stored hash.
+   - In `IncidentEvidenceView.tsx` (`load` and `handleSelectEvidence`):
+     - Restores `integrityStatus.result` from custody history on initial load and evidence selection.
+     - Renders genuine mismatch alerts (`CRYPTOGRAPHIC INTEGRITY MISMATCH`) with the recalculated hash and re-verify remediation options.
+
+4. **Automated Regression Test Suite (`scripts/test-evidence-integrity-persistence.cjs`)**:
+   - **Suite 1 (Seed Hash Payload Validation)**: Validates that exact UTF-8 text payload matches the seed hash `20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2`.
+   - **Suite 2 (Custody Reconciliation & Mismatch Immutability Logic)**: Verifies that tampered hashes trigger mismatch, stored hashes are strictly preserved, and reconciliation restores both match and mismatch states.
+   - **Suite 3 (Browser E2E Verify -> Refresh -> Displayed Result)**: Uses Chrome DevTools Protocol in an isolated browser profile to:
+     - Navigate Hub -> Evidence Vault.
+     - Verify EVD-000003 -> assert live match banner displays.
+     - Refresh page (`Page.reload`) -> navigate to Evidence -> assert live match banner remains visible from custody history without re-clicking verify.
+     - Assert stored hash remained completely immutable.
+     - Insert a tampered evidence record with genuine hash mismatch -> reload -> navigate to Evidence -> assert `⚠ MISMATCH DETECTED` banner and recalculated hash are prominently displayed.
+     - Clean up isolated browser profile in `finally` block.
+
+---
+
+### 3. Verification & Actual Test Results
+
+- **Evidence Integrity Regression Test (`scripts/test-evidence-integrity-persistence.cjs`)**: **ALL SUITES PASSED**.
+  - Seed hash validation: **PASS** (`20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2`).
+  - Provider reconciliation & mismatch immutability: **PASS**.
+  - Browser E2E verify → refresh → displayed result: **PASS**.
+  - Browser genuine mismatch detection & recalculated hash display: **PASS**.
+- **Evidence Management Domain Test (`scripts/test-step7-evidence.ts`)**: **11/11 SUITES PASSED**.
+- **All 8 Domain Suites (`test-event-engine`, `test-detection-engine`, `test-step4`, `test-step5`, `test-step6`, `test-step7`, `test-step8`, `test-step9`)**: **250/250 PASSED**.
+- **TypeScript Compilation (`npx tsc --noEmit`)**: **0 errors**.
+- **Production Builds**:
+  - `npm run build` (`vinext build`): **PASS** (all chunks generated).
+  - `npm run build:vercel` (`vite build`): **PASS** (`dist/vercel/index.html` built).
+
+
 
 
 

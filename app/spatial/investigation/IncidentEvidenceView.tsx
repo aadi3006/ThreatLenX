@@ -104,6 +104,40 @@ export default function IncidentEvidenceView({ incidentId }: IncidentEvidenceVie
             if (mounted) {
               setCustodyLogs(custody);
               setAnnotations(annos);
+              const latestVerify = custody
+                .filter((c) => c.action === 'INTEGRITY_VERIFIED')
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+              if (latestVerify) {
+                const isVerified = (latestVerify.metadata?.verified as boolean) ?? false;
+                setIntegrityStatus({
+                  verifying: false,
+                  result: {
+                    verified: isVerified,
+                    message:
+                      latestVerify.reason ||
+                      (isVerified
+                        ? 'SHA-256 integrity verified against stored payload'
+                        : 'INTEGRITY MISMATCH: computed hash does not match stored hash'),
+                    calculatedHash:
+                      (latestVerify.metadata?.computedHash as string) ||
+                      (latestVerify.metadata?.storedHash as string) ||
+                      undefined,
+                  },
+                });
+              } else if (items[0].integrity?.verifiedAt && items[0].integrity?.verified !== undefined) {
+                setIntegrityStatus({
+                  verifying: false,
+                  result: {
+                    verified: items[0].integrity.verified,
+                    message: items[0].integrity.verified
+                      ? `Cryptographic seal verified by ${items[0].integrity.verifiedBy || 'system'} (${new Date(items[0].integrity.verifiedAt).toLocaleDateString()})`
+                      : 'Cryptographic seal mismatch recorded',
+                    calculatedHash: items[0].integrity.hash,
+                  },
+                });
+              } else {
+                setIntegrityStatus({ verifying: false });
+              }
             }
           }
         }
@@ -128,6 +162,7 @@ export default function IncidentEvidenceView({ incidentId }: IncidentEvidenceVie
   const handleSelectEvidence = async (ev: Evidence) => {
     cyberAudio.playClick();
     setSelectedEvidence(ev);
+    setIntegrityStatus({ verifying: false });
     try {
       const [custody, annos] = await Promise.all([
         securityService.getEvidenceCustody(ev.id),
@@ -135,9 +170,44 @@ export default function IncidentEvidenceView({ incidentId }: IncidentEvidenceVie
       ]);
       setCustodyLogs(custody);
       setAnnotations(annos);
+      const latestVerify = custody
+        .filter((c) => c.action === 'INTEGRITY_VERIFIED')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      if (latestVerify) {
+        const isVerified = (latestVerify.metadata?.verified as boolean) ?? false;
+        setIntegrityStatus({
+          verifying: false,
+          result: {
+            verified: isVerified,
+            message:
+              latestVerify.reason ||
+              (isVerified
+                ? 'SHA-256 integrity verified against stored payload'
+                : 'INTEGRITY MISMATCH: computed hash does not match stored hash'),
+            calculatedHash:
+              (latestVerify.metadata?.computedHash as string) ||
+              (latestVerify.metadata?.storedHash as string) ||
+              undefined,
+          },
+        });
+      } else if (ev.integrity?.verifiedAt && ev.integrity?.verified !== undefined) {
+        setIntegrityStatus({
+          verifying: false,
+          result: {
+            verified: ev.integrity.verified,
+            message: ev.integrity.verified
+              ? `Cryptographic seal verified by ${ev.integrity.verifiedBy || 'system'} (${new Date(ev.integrity.verifiedAt).toLocaleDateString()})`
+              : 'Cryptographic seal mismatch recorded',
+            calculatedHash: ev.integrity.hash,
+          },
+        });
+      } else {
+        setIntegrityStatus({ verifying: false });
+      }
     } catch {
       setCustodyLogs([]);
       setAnnotations([]);
+      setIntegrityStatus({ verifying: false });
     }
   };
 
@@ -455,6 +525,14 @@ export default function IncidentEvidenceView({ incidentId }: IncidentEvidenceVie
                           <span>CRYPTOGRAPHIC INTEGRITY MISMATCH</span>
                         </div>
                         <div className="soc-failure-explanation">{integrityStatus.result.message}</div>
+                        {integrityStatus.result.calculatedHash && (
+                          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
+                            <span style={{ color: '#94a3b8' }}>Recalculated:</span>
+                            <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: 3, color: '#ff5555' }}>
+                              {integrityStatus.result.calculatedHash}
+                            </code>
+                          </div>
+                        )}
                         <div className="soc-failure-actions">
                           <button
                             type="button"
