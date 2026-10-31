@@ -2577,8 +2577,11 @@ export class LocalProvider implements ISecurityProvider {
 
   async runThreatHunt(query: ThreatHuntQuery): Promise<ThreatHuntExecutionResult> {
     const session = this.getCurrentSession();
-    const actor = session?.username ?? 'SYSTEM';
-    const actorRole = session?.role ?? 'THREAT_HUNTER';
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    const actor = session.username;
+    const actorRole = session.role;
 
     if (!canExecuteThreatHunt(actorRole)) {
       throw new Error(`Unauthorized: Role "${actorRole}" cannot execute threat hunts`);

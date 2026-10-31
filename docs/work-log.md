@@ -1513,3 +1513,73 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 
 5. **Real Browser Six-Zone CDP Test (`npx tsx scripts/test-browser-six-zones.ts`)**:
    - **Exit Code**: `0` (**PASS**, all 6 zones navigated and verified in Chrome CDP).
+
+---
+
+## Threat Hunting Authorization & Session Hardening
+
+### 1. Task Objective & Requirements
+- **User Request**: Apply only the Threat Hunting authorization fix:
+  1. Require `THREAT_HUNT_EXECUTE` in `canExecuteThreatHunt`; missing roles (`!roleId`) must return `false` (fail-closed).
+  2. Require an active session in `SecurityService.runThreatHunt` and `LocalProvider.runThreatHunt`; remove the privileged fallback (`session?.role ?? 'THREAT_HUNTER'`).
+  3. Preserve read access for read-only roles (`L1_ANALYST` etc.) using `canReadThreatHunts`.
+  4. Test that missing sessions and L1 execution are denied before any mutation; authorized execution still succeeds. Update the old contradictory assertion in `scripts/test-step5-hunting.ts`.
+  5. Preserve UI appearance, navigation, and stored data; use isolated test storage.
+  6. Run Hunting tests, TypeScript check, both builds (`npm run build` and `npm run build:vercel`), and navigation tests.
+
+---
+
+### 2. Implementation Details
+
+#### `app/core/auth/rbac.ts`
+- **Fail-Closed Role Check**: Updated `canExecuteThreatHunt(roleId?: RoleId): boolean` to return `false` if `!roleId`. Strictly requires `THREAT_HUNT_EXECUTE` permission (removed permissive `|| hasPermission(roleId, 'THREAT_HUNT_READ')`).
+- **Read Helper Preservation**: Added/exported `canReadThreatHunts(roleId?: RoleId): boolean` which returns `false` if `!roleId` and checks `hasPermission(roleId, 'THREAT_HUNT_READ')`. This ensures read-only roles like `L1_ANALYST` retain read/query capability without execute privileges.
+- **Save Hunt Helper**: Updated `canSaveThreatHunt(roleId?: RoleId): boolean` to return `false` if `!roleId`.
+
+#### `app/core/security-service.ts`
+- **Active Session & Permission Gate**: In `runThreatHunt(query: ThreatHuntQuery)`:
+  - Enforced active session verification using `this._assertSession()`.
+  - Added role permission gate: `if (!canExecuteThreatHunt(session.role)) throw new Error(...)`.
+  - Blocks unauthenticated callers and unauthorized roles before any provider delegation or event emissions (`THREAT_HUNT_EXECUTED`, `AUDIT_APPENDED`).
+
+#### `app/core/providers/local-provider.ts`
+- **Removed Privileged Fallback**: In `runThreatHunt(query: ThreatHuntQuery)`:
+  - Removed fallback defaults (`session?.username ?? 'SYSTEM'`, `session?.role ?? 'THREAT_HUNTER'`).
+  - Added strict session check: `if (!session) throw new Error('Unauthorized: Operation requires an active session.');`.
+  - Denies unauthenticated callers and roles lacking `THREAT_HUNT_EXECUTE` before executing the query, mutating `this._auditRecords`, or persisting audit logs to IndexedDB.
+
+#### `scripts/test-step5-hunting.ts`
+- **Updated Section 8 (RBAC Permissions)**:
+  - Replaced the outdated assertion (`canExecuteThreatHunt('L1_ANALYST')`) with:
+    - `assert(!canExecuteThreatHunt('L1_ANALYST'), 'L1_ANALYST cannot execute threat hunts (requires THREAT_HUNT_EXECUTE)');`
+    - `assert(canReadThreatHunts('L1_ANALYST'), 'L1_ANALYST has read capability (THREAT_HUNT_READ)');`
+    - `assert(!canExecuteThreatHunt(undefined), 'Missing role cannot execute threat hunts (fail-closed)');`
+    - `assert(!canReadThreatHunts(undefined), 'Missing role cannot read threat hunts');`
+    - `assert(!canSaveThreatHunt(undefined), 'Missing role cannot save threat hunts');`
+- **Added Suite 11 (End-to-End Session & RBAC Enforcement Mutation Isolation)**:
+  - Set up isolated in-memory IndexedDB mock so test execution runs purely in memory without disk or browser storage side effects.
+  - Initialized isolated `LocalProvider` and `SecurityService` instances.
+  - Verified denial when session is missing in `SecurityService.runThreatHunt` (0 mutations, audit count unchanged).
+  - Verified denial when session is missing in `LocalProvider.runThreatHunt` (0 mutations, audit count unchanged).
+  - Verified denial for `L1_ANALYST` in `SecurityService.runThreatHunt` (0 mutations, audit count unchanged).
+  - Verified denial for `L1_ANALYST` in `LocalProvider.runThreatHunt` (0 mutations, audit count unchanged).
+  - Verified authorized execution succeeds for `THREAT_HUNTER` (audit record committed with action `THREAT_HUNT_EXECUTED`, actor `hunter`, role `THREAT_HUNTER`).
+  - Verified authorized execution succeeds for `L2_ANALYST` (second audit record committed with actor `analyst2`, role `L2_ANALYST`).
+
+---
+
+### 3. Verification & Test Results
+
+1. **Threat Hunting Engine Tests (`npx tsx scripts/test-step5-hunting.ts`)**:
+   - **Exit Code**: `0` (**PASS**, 11/11 test suites passed).
+2. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+3. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed).
+4. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production bundle generated).
+5. **Central Navigation Domain Tests (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, 7/7 navigation suites passed).
+6. **Central Spatial Hub Test (`node scripts/test-hub-stage5.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 6 zone transitions and return navigation verified, 100% data preservation verified across all 36 IndexedDB stores).
+

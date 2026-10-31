@@ -111,7 +111,7 @@ import type {
   SocActivityTimelineItem,
   MetricProvenance,
 } from './models/metrics';
-import { canViewSocMetrics, canViewOperationalData } from './auth/rbac';
+import { canViewSocMetrics, canViewOperationalData, canExecuteThreatHunt } from './auth/rbac';
 import {
   canViewSimulations,
   canRunSimulation,
@@ -765,6 +765,10 @@ export class SecurityService {
   // ─── Threat Hunting Engine ──────────────────────────────────────────────────
 
   async runThreatHunt(query: ThreatHuntQuery): Promise<ThreatHuntExecutionResult> {
+    const session = this._assertSession();
+    if (!canExecuteThreatHunt(session.role)) {
+      throw new Error(`[SecurityService] Role ${session.role} lacks THREAT_HUNT_EXECUTE permission.`);
+    }
     const res = await this._requireProvider().runThreatHunt(query);
     this._emit('THREAT_HUNT_EXECUTED');
     this._emit('AUDIT_APPENDED');

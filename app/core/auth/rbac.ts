@@ -374,13 +374,18 @@ export function canCorrelate(roleId?: RoleId): boolean {
   return hasPermission(roleId, 'INCIDENT_TRIAGE') || hasPermission(roleId, 'INCIDENT_INVESTIGATE');
 }
 
+export function canReadThreatHunts(roleId?: RoleId): boolean {
+  if (!roleId) return false;
+  return hasPermission(roleId, 'THREAT_HUNT_READ');
+}
+
 export function canExecuteThreatHunt(roleId?: RoleId): boolean {
-  if (!roleId) return true; // System / automated
-  return hasPermission(roleId, 'THREAT_HUNT_EXECUTE') || hasPermission(roleId, 'THREAT_HUNT_READ');
+  if (!roleId) return false;
+  return hasPermission(roleId, 'THREAT_HUNT_EXECUTE');
 }
 
 export function canSaveThreatHunt(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'THREAT_HUNT_EXECUTE');
 }
 

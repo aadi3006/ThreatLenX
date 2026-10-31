@@ -16,7 +16,11 @@ import {
 import {
   canExecuteThreatHunt,
   canSaveThreatHunt,
+  canReadThreatHunts,
 } from '../app/core/auth/rbac';
+import { LocalProvider } from '../app/core/providers/local-provider';
+import { SecurityService } from '../app/core/security-service';
+import { authenticate, logout } from '../app/core/auth/local-auth-service';
 import type { Alert } from '../app/core/models/detection';
 import type { Incident } from '../app/core/models/incident';
 import type { ThreatHuntQuery } from '../app/core/models/hunting';
@@ -229,12 +233,16 @@ assert(canExecuteThreatHunt('THREAT_HUNTER'), 'THREAT_HUNTER can execute threat 
 assert(canExecuteThreatHunt('SOC_MANAGER'), 'SOC_MANAGER can execute threat hunts');
 assert(canExecuteThreatHunt('PLATFORM_ADMIN'), 'PLATFORM_ADMIN can execute threat hunts');
 assert(canExecuteThreatHunt('L2_ANALYST'), 'L2_ANALYST can execute threat hunts');
-assert(canExecuteThreatHunt('L1_ANALYST'), 'L1_ANALYST has read/query capability');
+assert(!canExecuteThreatHunt('L1_ANALYST'), 'L1_ANALYST cannot execute threat hunts (requires THREAT_HUNT_EXECUTE)');
+assert(canReadThreatHunts('L1_ANALYST'), 'L1_ANALYST has read capability (THREAT_HUNT_READ)');
 assert(!canExecuteThreatHunt('INCIDENT_RESPONDER'), 'INCIDENT_RESPONDER cannot execute threat hunts directly');
+assert(!canExecuteThreatHunt(undefined), 'Missing role cannot execute threat hunts (fail-closed)');
+assert(!canReadThreatHunts(undefined), 'Missing role cannot read threat hunts');
 
 assert(canSaveThreatHunt('THREAT_HUNTER'), 'THREAT_HUNTER can save threat hunts');
 assert(canSaveThreatHunt('L2_ANALYST'), 'L2_ANALYST can save threat hunts');
 assert(!canSaveThreatHunt('L1_ANALYST'), 'L1_ANALYST cannot save threat hunts');
+assert(!canSaveThreatHunt(undefined), 'Missing role cannot save threat hunts');
 
 // ─── 9. Hunt Lifecycle Simulation ────────────────────────────────────────────
 console.log('\n9. Hunt Lifecycle Simulation (Draft -> Running -> Completed -> Archived):');
@@ -320,6 +328,168 @@ const createdIncidentFromHunt: Incident = {
 assert(createdIncidentFromHunt.eventIds?.length === execHunts.matchedEventIds.length, 'Created incident retains all selected evidence IDs');
 assert(Boolean(createdIncidentFromHunt.summary?.startsWith('Created from hunt: MATCHED BECAUSE:')), 'Incident summary captures hunt rationale');
 
+// ─── 11. End-to-End Session & RBAC Enforcement (No Mutations on Denial) ──────
+console.log('\n11. Session & RBAC Enforcement Mutation Isolation:');
+
+// Create headless in-memory mock for indexedDB if run in pure node
+if (typeof indexedDB === 'undefined') {
+  const memoryStores = new Map<string, Map<string, unknown>>();
+  const getStore = (name: string) => {
+    if (!memoryStores.has(name)) memoryStores.set(name, new Map());
+    return memoryStores.get(name)!;
+  };
+
+  const createReq = (result: any) => {
+    const r: any = { result, onsuccess: null, onerror: null };
+    queueMicrotask(() => {
+      if (r.onsuccess) r.onsuccess({ target: r });
+    });
+    return r;
+  };
+
+  (global as any).indexedDB = {
+    open: (_dbName: string, _version: number) => {
+      const dbInstance: any = {
+        objectStoreNames: {
+          contains: (name: string) => memoryStores.has(name),
+        },
+        createObjectStore: (name: string) => {
+          getStore(name);
+          return {
+            createIndex: () => {},
+            indexNames: { contains: () => true },
+          };
+        },
+        transaction: (storeNames: string | string[], mode: string) => {
+          const txObj: any = {
+            objectStore: (s: string) => {
+              const st = getStore(s);
+              return {
+                getAll: () => createReq(Array.from(st.values())),
+                get: (key: string) => createReq(st.get(key)),
+                put: (val: any) => {
+                  const key = val.id ?? val.key ?? `auto_${Math.random()}`;
+                  st.set(key, val);
+                  return createReq(key);
+                },
+                delete: (key: string) => {
+                  st.delete(key);
+                  return createReq(undefined);
+                },
+                clear: () => {
+                  st.clear();
+                  return createReq(undefined);
+                },
+              };
+            },
+            oncomplete: null,
+            onerror: null,
+            onabort: null,
+          };
+          queueMicrotask(() => {
+            if (txObj.oncomplete) txObj.oncomplete();
+          });
+          return txObj;
+        },
+        close: () => {},
+      };
+
+      const req: any = {
+        result: dbInstance,
+        onsuccess: null,
+        onerror: null,
+        onupgradeneeded: null,
+      };
+
+      queueMicrotask(() => {
+        if (req.onupgradeneeded) {
+          req.onupgradeneeded({ target: req, oldVersion: 0 });
+        }
+        if (req.onsuccess) {
+          req.onsuccess({ target: req });
+        }
+      });
+      return req;
+    },
+  };
+}
+
+const provider = new LocalProvider();
+await provider.initialize();
+const secService = new SecurityService();
+await secService.bootstrap(provider);
+
+// Baseline: start logged out
+logout();
+const baselineAudits = (await provider.getAuditLogs()).length;
+
+// A. Missing session in SecurityService -> Denied without mutation
+let secServiceNoSessionError = false;
+try {
+  await secService.runThreatHunt(newHuntQuery);
+} catch (err: any) {
+  secServiceNoSessionError = true;
+  assert(err.message.includes('Operation requires an active session'), 'SecurityService error specifies active session required');
+}
+assert(secServiceNoSessionError, 'SecurityService rejects runThreatHunt when session is missing');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 mutations when SecurityService execution rejected due to missing session');
+
+// B. Missing session in LocalProvider -> Denied without mutation
+let providerNoSessionError = false;
+try {
+  await provider.runThreatHunt(newHuntQuery);
+} catch (err: any) {
+  providerNoSessionError = true;
+  assert(err.message.includes('Operation requires an active session'), 'LocalProvider error specifies active session required');
+}
+assert(providerNoSessionError, 'LocalProvider rejects runThreatHunt when session is missing');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 mutations when LocalProvider execution rejected due to missing session');
+
+// C. L1 Analyst in SecurityService -> Denied without mutation
+authenticate({ username: 'analyst1', roleOverride: 'L1_ANALYST' });
+let secServiceL1Error = false;
+try {
+  await secService.runThreatHunt(newHuntQuery);
+} catch (err: any) {
+  secServiceL1Error = true;
+  assert(err.message.includes('lacks THREAT_HUNT_EXECUTE permission'), 'SecurityService error indicates missing THREAT_HUNT_EXECUTE');
+}
+assert(secServiceL1Error, 'SecurityService rejects runThreatHunt for L1_ANALYST');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 mutations when SecurityService execution rejected for L1_ANALYST');
+
+// D. L1 Analyst in LocalProvider -> Denied without mutation
+let providerL1Error = false;
+try {
+  await provider.runThreatHunt(newHuntQuery);
+} catch (err: any) {
+  providerL1Error = true;
+  assert(err.message.includes('cannot execute threat hunts'), 'LocalProvider error indicates role cannot execute threat hunts');
+}
+assert(providerL1Error, 'LocalProvider rejects runThreatHunt for L1_ANALYST');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 mutations when LocalProvider execution rejected for L1_ANALYST');
+
+// E. Authorized execution (THREAT_HUNTER) -> Allowed and audit entry committed
+authenticate({ username: 'hunter', roleOverride: 'THREAT_HUNTER' });
+const hunterResult = await secService.runThreatHunt(newHuntQuery);
+assert(hunterResult.totalMatches >= 1, 'Authorized THREAT_HUNTER executes hunt successfully');
+const auditsAfterHunter = await provider.getAuditLogs();
+assert(auditsAfterHunter.length === baselineAudits + 1, 'Audit log mutated exactly once on successful execution');
+assert(auditsAfterHunter[auditsAfterHunter.length - 1].action === 'THREAT_HUNT_EXECUTED', 'Audit log records THREAT_HUNT_EXECUTED');
+assert(auditsAfterHunter[auditsAfterHunter.length - 1].actor === 'hunter', 'Audit log records actor as hunter');
+assert(auditsAfterHunter[auditsAfterHunter.length - 1].actorRole === 'THREAT_HUNTER', 'Audit log records actorRole as THREAT_HUNTER');
+
+// F. Authorized execution (L2_ANALYST) -> Allowed and audit entry committed
+authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
+const l2Result = await secService.runThreatHunt(newHuntQuery);
+assert(l2Result.totalMatches >= 1, 'Authorized L2_ANALYST executes hunt successfully');
+const auditsAfterL2 = await provider.getAuditLogs();
+assert(auditsAfterL2.length === baselineAudits + 2, 'Audit log mutated on second authorized execution');
+assert(auditsAfterL2[auditsAfterL2.length - 1].actor === 'analyst2', 'Audit log records actor as analyst2');
+assert(auditsAfterL2[auditsAfterL2.length - 1].actorRole === 'L2_ANALYST', 'Audit log records actorRole as L2_ANALYST');
+
+// Clean up session
+logout();
+
 console.log('\n====================================================');
-console.log('   ALL 10 STEP 5 TEST SUITES PASSED CLEANLY! ✓');
+console.log('   ALL 11 STEP 5 TEST SUITES PASSED CLEANLY! ✓');
 console.log('====================================================\n');
