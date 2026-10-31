@@ -30,7 +30,9 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any).__socNavStore = socNavStore;
-      (window as any).__securityService = securityService;
+      if (process.env.NODE_ENV !== 'production') {
+        (window as any).__securityService = securityService;
+      }
     }
     // Initialize performance mode on client after hydration
     performanceManager?.initClient?.();

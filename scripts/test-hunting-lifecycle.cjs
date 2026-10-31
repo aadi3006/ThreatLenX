@@ -310,46 +310,96 @@ async function runHuntingLifecycleSuite() {
     }
     assert(savedRunDone, 'Saved-hunt Load & Run completed cleanly');
 
-    // ─── TEST 4: Rapid Consecutive Runs ───────────────────────────────────────
-    console.log('\n--- TEST 4: Rapid Consecutive Runs (Timers Cancelled, No Overwrite) ---');
+    // ─── TEST 4: In-Flight Race Condition (Run A Starts First, Finishes After Run B) ───
+    console.log('\n--- TEST 4: In-Flight Race Condition (Run A Finishes After Run B) ---');
 
-    // Trigger Run A then Run B rapidly
-    const rapidRunResult = await evalJson(`(() => {
-      const cards = document.querySelectorAll('.hunt-template-card');
-      if (cards.length >= 4) {
-        // Click template 2 (Run A)
-        cards[2].click();
-        // Immediately click template 3 (Run B) 10ms later
-        setTimeout(() => {
-          cards[3].click();
-        }, 10);
-        return {
-          runA: cards[2].querySelector('.tpl-name')?.textContent?.trim(),
-          runB: cards[3].querySelector('.tpl-name')?.textContent?.trim()
+    try {
+      // Mock runThreatHunt to delay Run A resolution past Run B's completion
+      await evalJson(`(() => {
+        const svc = window.__securityService;
+        if (!svc) throw new Error('window.__securityService not available');
+        window.__origRunThreatHunt = svc.runThreatHunt.bind(svc);
+        
+        let callCount = 0;
+        window.__raceLog = [];
+        
+        svc.runThreatHunt = async (query) => {
+          callCount++;
+          const callId = callCount;
+          window.__raceLog.push({ callId, phase: 'start', queryCategory: query.categories?.[0] });
+          
+          if (callId === 1) {
+            // Run A: Start first, but delay resolution by 500ms so it resolves AFTER Run B
+            const resultA = await window.__origRunThreatHunt(query);
+            await new Promise(r => setTimeout(r, 500));
+            window.__raceLog.push({ callId, phase: 'finish', queryCategory: query.categories?.[0] });
+            return resultA;
+          } else {
+            // Run B: Resolves quickly
+            const resultB = await window.__origRunThreatHunt(query);
+            window.__raceLog.push({ callId, phase: 'finish', queryCategory: query.categories?.[0] });
+            return resultB;
+          }
         };
-      }
-      return null;
-    })()`);
-    assert(rapidRunResult !== null, `Rapid consecutive runs triggered: Run A ("${rapidRunResult?.runA}") then Run B ("${rapidRunResult?.runB}")`);
+      })()`);
 
-    // Wait for the pipeline to settle
-    let rapidDone = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 60));
-      const stateText = await evalJson(`document.querySelector('.hunt-btn-run')?.textContent?.trim()`);
-      if (stateText === 'RUN HUNT') {
-        rapidDone = true;
-        break;
+      // Click Template 0 (Run A: Suspicious PowerShell Execution, category: PROCESS)
+      // Then 30ms later, click Template 1 (Run B: Repeated Authentication Failures, category: AUTHENTICATION)
+      const raceTrigger = await evalJson(`(() => {
+        const cards = document.querySelectorAll('.hunt-template-card');
+        if (cards.length < 2) return { error: 'Not enough template cards' };
+        cards[0].click(); // Run A
+        setTimeout(() => {
+          cards[1].click(); // Run B
+        }, 30);
+        return {
+          nameA: cards[0].querySelector('.tpl-name')?.textContent?.trim(),
+          nameB: cards[1].querySelector('.tpl-name')?.textContent?.trim()
+        };
+      })()`);
+      assert(!raceTrigger.error, `Triggered Run A ("${raceTrigger.nameA}") and Run B ("${raceTrigger.nameB}")`);
+
+      // Wait until pipeline settles to RUN HUNT
+      let raceSettled = false;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 60));
+        const stateText = await evalJson(`document.querySelector('.hunt-btn-run')?.textContent?.trim()`);
+        if (stateText === 'RUN HUNT') {
+          raceSettled = true;
+          break;
+        }
       }
+      assert(raceSettled, 'Pipeline completed cleanly after rapid consecutive runs');
+
+      // Wait additional 350ms so Run A's delayed promise (500ms) has definitely resolved in background
+      await new Promise(r => setTimeout(r, 350));
+
+      // Verify displayed results belong to Run B, NOT Run A
+      const raceCheck = await evalJson(`(() => {
+        const selectedEvent = document.querySelector('.inspector-val')?.textContent?.trim();
+        const matchCountText = document.querySelector('.hunt-header-title')?.textContent?.trim();
+        const nodeCount = document.querySelectorAll('.hunt-node').length;
+        const activeTemplate = document.querySelector('.hunt-template-card.active .tpl-name')?.textContent?.trim();
+        const raceLog = window.__raceLog || [];
+        return { selectedEvent, matchCountText, nodeCount, activeTemplate, raceLog };
+      })()`);
+
+      // Template 1 (Repeated Authentication Failures) matches evt-raw-016 (AUTHENTICATION) and has 3 events
+      // Template 0 (Suspicious PowerShell Execution) matches evt-raw-001 (PROCESS) and has 2 events
+      assert(raceCheck.selectedEvent === 'evt-raw-016', `Displayed inspector event belongs to Run B (expected 'evt-raw-016', observed '${raceCheck.selectedEvent}')`);
+      assert(raceCheck.nodeCount === 3, `Displayed constellation nodes belong to Run B (expected 3, observed ${raceCheck.nodeCount})`);
+      assert(raceCheck.activeTemplate === raceTrigger.nameB, `Active template belongs to Run B ('${raceCheck.activeTemplate}')`);
+      assert(raceCheck.raceLog.some(l => l.callId === 1 && l.phase === 'finish'), 'Run A resolved after Run B without overwriting Run B results');
+    } finally {
+      // Unconditionally restore original method
+      await evalJson(`(() => {
+        if (window.__origRunThreatHunt && window.__securityService) {
+          window.__securityService.runThreatHunt = window.__origRunThreatHunt;
+          delete window.__origRunThreatHunt;
+          delete window.__raceLog;
+        }
+      })()`);
     }
-    assert(rapidDone, 'Pipeline completed cleanly after rapid consecutive runs');
-
-    // Verify active template matches Run B (the latest run) and was not overwritten by Run A
-    const activeTemplate = await evalJson(`(() => {
-      const activeCard = document.querySelector('.hunt-template-card.active .tpl-name');
-      return activeCard?.textContent?.trim();
-    })()`);
-    assert(activeTemplate === rapidRunResult.runB, `Latest run retained without overwrite by older run (active: "${activeTemplate}")`);
 
     // ─── TEST 5: Unmount During Execution ─────────────────────────────────────
     console.log('\n--- TEST 5: Unmount During Execution (Pending Timers Cancelled) ---');
@@ -378,8 +428,8 @@ async function runHuntingLifecycleSuite() {
     const unmountErrors = newErrors.filter(e => e.includes('unmounted') || e.includes('memory leak') || e.includes('Can\'t perform a React state update'));
     assert(unmountErrors.length === 0, 'Zero unmounted component state update warnings or errors');
 
-    // ─── TEST 6: Denied Execution Exits Loading State Cleanly ──────────────────
-    console.log('\n--- TEST 6: Denied Execution Exits Loading State Cleanly ---');
+    // ─── TEST 6: Denied Execution & Stale Error Notice Clearing on Retry ──────────
+    console.log('\n--- TEST 6: Denied Execution & Stale Error Clearing on Retry ---');
 
     // Navigate back to Threat Hunting Workspace
     await evalJson(`(() => {
@@ -405,45 +455,77 @@ async function runHuntingLifecycleSuite() {
     const hasSecService = await evalJson(`!!window.__securityService`);
     console.log('window.__securityService available:', hasSecService);
 
-    // Temporarily install a mock on securityService.runThreatHunt that rejects (denied execution)
-    await evalJson(`(() => {
-      if (window.__securityService) {
-        window.__origRunThreatHunt = window.__securityService.runThreatHunt;
-        window.__securityService.runThreatHunt = async () => {
-          throw new Error('Unauthorized: Role lacks THREAT_HUNT_EXECUTE permission.');
-        };
-      }
-    })()`);
-
-    // Click RUN HUNT
-    await evalJson(`document.querySelector('.hunt-btn-run')?.click()`);
-
-    // Verify it transitions through pipeline and exits loading state back to RUN HUNT with status notice
-    let deniedExitedCleanly = false;
-    let noticeMessage = null;
-    for (let i = 0; i < 25; i++) {
-      await new Promise(r => setTimeout(r, 50));
-      const res = await evalJson(`(() => {
-        const btn = document.querySelector('.hunt-btn-run')?.textContent?.trim();
-        const notice = document.querySelector('.hunt-status-notice')?.textContent?.trim();
-        return { btn, notice };
+    try {
+      // Temporarily install a mock on securityService.runThreatHunt that rejects (denied execution)
+      await evalJson(`(() => {
+        if (window.__securityService) {
+          window.__origRunThreatHunt = window.__securityService.runThreatHunt.bind(window.__securityService);
+          window.__securityService.runThreatHunt = async () => {
+            throw new Error('Unauthorized: Role lacks THREAT_HUNT_EXECUTE permission.');
+          };
+        }
       })()`);
-      if (res && res.btn === 'RUN HUNT' && res.notice && res.notice.includes('THREAT_HUNT_EXECUTE')) {
-        deniedExitedCleanly = true;
-        noticeMessage = res.notice;
-        break;
+
+      // Click RUN HUNT to trigger denied execution
+      await evalJson(`document.querySelector('.hunt-btn-run')?.click()`);
+
+      // Verify it transitions through pipeline and exits loading state back to RUN HUNT with status notice
+      let deniedExitedCleanly = false;
+      let noticeMessage = null;
+      for (let i = 0; i < 25; i++) {
+        await new Promise(r => setTimeout(r, 50));
+        const res = await evalJson(`(() => {
+          const btn = document.querySelector('.hunt-btn-run')?.textContent?.trim();
+          const notice = document.querySelector('.hunt-status-notice')?.textContent?.trim();
+          return { btn, notice };
+        })()`);
+        if (res && res.btn === 'RUN HUNT' && res.notice && res.notice.includes('THREAT_HUNT_EXECUTE')) {
+          deniedExitedCleanly = true;
+          noticeMessage = res.notice;
+          break;
+        }
       }
+      assert(deniedExitedCleanly, `Denied execution exited loading state cleanly (status: "${noticeMessage}")`);
+
+      // Now restore original runThreatHunt and initiate a retry
+      await evalJson(`(() => {
+        if (window.__origRunThreatHunt && window.__securityService) {
+          window.__securityService.runThreatHunt = window.__origRunThreatHunt;
+          delete window.__origRunThreatHunt;
+        }
+      })()`);
+
+      // Trigger retry run
+      await evalJson(`document.querySelector('.hunt-btn-run')?.click()`);
+
+      // Verify: stale error notice is immediately cleared upon starting the retry
+      const noticeImmediatelyAfterRetry = await evalJson(`document.querySelector('.hunt-status-notice') !== null`);
+      assert(!noticeImmediatelyAfterRetry, 'Stale execution error notice cleared immediately when new run begins');
+
+      // Wait for retry run to complete successfully
+      let retryDone = false;
+      for (let i = 0; i < 25; i++) {
+        await new Promise(r => setTimeout(r, 50));
+        const btnText = await evalJson(`document.querySelector('.hunt-btn-run')?.textContent?.trim()`);
+        if (btnText === 'RUN HUNT') {
+          retryDone = true;
+          break;
+        }
+      }
+      assert(retryDone, 'Retry run completed successfully');
+
+      // Verify that after successful completion, the denial message is NOT present
+      const finalNotice = await evalJson(`document.querySelector('.hunt-status-notice')?.textContent?.trim() || null`);
+      assert(finalNotice === null || !finalNotice.includes('Unauthorized'), 'Successful run does not retain stale denial message');
+    } finally {
+      // Unconditionally restore original method
+      await evalJson(`(() => {
+        if (window.__origRunThreatHunt && window.__securityService) {
+          window.__securityService.runThreatHunt = window.__origRunThreatHunt;
+          delete window.__origRunThreatHunt;
+        }
+      })()`);
     }
-
-    // Restore original method
-    await evalJson(`(() => {
-      if (window.__origRunThreatHunt && window.__securityService) {
-        window.__securityService.runThreatHunt = window.__origRunThreatHunt;
-        delete window.__origRunThreatHunt;
-      }
-    })()`);
-
-    assert(deniedExitedCleanly, `Denied execution exited loading state cleanly (status: "${noticeMessage}")`);
 
     console.log('\n====================================================');
     console.log('   ALL 6 HUNTING LIFECYCLE TESTS PASSED CLEANLY! ✓');

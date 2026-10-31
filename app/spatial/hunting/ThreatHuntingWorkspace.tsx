@@ -224,6 +224,9 @@ export default function ThreatHuntingWorkspace({
     clearPendingTimers();
     const runId = ++activeRunIdRef.current;
 
+    // Clear stale execution-error notice when a new run begins
+    setStatusNotice(null);
+
     setExecState('QUERYING');
 
     const queryToRun = overrideQuery ?? currentQueryRef.current;
