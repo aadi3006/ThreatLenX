@@ -26,21 +26,17 @@ import type { Incident } from '../../core/models/incident';
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 import type { Asset, IOC } from '../../core/models/entity';
 import type { ResponseAction } from '../../core/models/response';
-import type { SecurityOperationsSnapshot, ThreatLevel } from '../../core/security/threat-level-service';
+import type { SecurityOperationsSnapshot } from '../../core/security/threat-level-service';
 import type { PerformanceMode } from '../performance-mode';
-import type { EventCategory } from '../../core/models/event';
-import type { Alert, AlertStatus } from '../../core/models/detection';
 import type { ThreatIntelRecord } from '../../core/models/threat-intel';
 import type { SocOperationalSnapshot } from '../../core/models/metrics';
 import { ThreatIntelProfile } from '../intel/ThreatIntelProfile';
 import { securityService } from '../../core/security-service';
 import {
   ShieldAlert,
-  AlertTriangle,
   Radio,
   Server,
   Activity,
-  Layers,
   Zap,
   Eye,
   ChevronDown,
@@ -48,12 +44,7 @@ import {
   Maximize2,
   Minimize2,
   Lock,
-  Unlock,
-  CheckCircle2,
-  Clock,
   ExternalLink,
-  Sliders,
-  Filter,
   Plus,
   Bell,
   CheckCheck,

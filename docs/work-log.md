@@ -1346,6 +1346,53 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 - **Evidence Integrity Regression (`scripts/test-evidence-integrity-persistence.cjs`)**: **3/3 SUITES PASSED**.
 - **Application Behavior & Stored Data**: Zero UI changes, zero behavior change, zero storage modifications.
 
+---
+
+## ThreatLenX Lint Cleanup: Batch 2 Execution & Verification
+
+### 1. Scope & Execution
+- **Target Directories**: `app/spatial/hub/` and `app/spatial/command/`.
+- **Target Rule**: Only unused imports (`eslint(no-unused-vars)`).
+- **Audit Findings**:
+  - `app/spatial/hub/`: Verified 0 unused imports. (The only two linter findings in `hub/` are accessibility warnings: `click-events-have-key-events` and `prefer-tag-over-role`).
+  - `app/spatial/command/CommandCenterWorkspace.tsx`: Removed 15 unused imports:
+    - 5 unused types: `Incident`, `Severity`, `Alert`, `Asset`, `ResponseAction` from `../../core/models/*`.
+    - 10 unused Lucide icons: `Activity`, `CheckCircle2`, `Clock`, `X`, `Eye`, `Layers`, `Sparkles`, `Lock`, `Workflow`, `Terminal`.
+    - Preserved side-effect CSS import `import './command-center-workspace.css';`.
+    - Preserved state/variables `snapshot` and `selectedRowIndex`.
+  - `app/spatial/command/CommandCenter.tsx`: Removed 11 unused imports:
+    - 4 unused types: `ThreatLevel`, `EventCategory`, `Alert`, `AlertStatus` from `../../core/models/*`.
+    - 7 unused Lucide icons: `AlertTriangle`, `Layers`, `Unlock`, `CheckCircle2`, `Clock`, `Sliders`, `Filter`.
+    - Preserved parameter `iocs` and variables `isolatedAssets`, `suspiciousAssets`, `healthyAssets`.
+- **Preservation Verification**:
+  - Zero functions, state, parameters, or executable expressions removed.
+  - Zero CSS or side-effect imports removed.
+  - Zero formatting changes outside the removed import lines.
+
+---
+
+### 2. Before / After Metrics
+
+| Metric | Before Batch 2 | After Batch 2 | Net Reduction |
+| :--- | :---: | :---: | :---: |
+| **Total Reported Oxlint Errors** | **1,269** | **1,243** | **-26 errors (-2.05%)** |
+| Unused Imports in `app/spatial/command/` | 26 | **0** | **-26 errors (100% resolved)** |
+| Unused Imports in `app/spatial/hub/` | 0 | **0** | **0 (already clean)** |
+| Total `eslint(no-unused-vars)` Across Codebase | 371 | **345** | **-26 errors** |
+
+---
+
+### 3. Build & Runtime Verification
+- **TypeScript (`npx tsc --noEmit`)**: **PASS (0 errors)**.
+- **Production Builds**:
+  - `npm run build` (`vinext build`): **PASS** (all chunks generated).
+  - `npm run build:vercel` (`vite build --config vite.vercel.config.ts`): **PASS** (`dist/vercel/index.html` built).
+- **Hub & Command Browser Checks**:
+  - `node scripts/test-hub-stage5.cjs`: **PASS (8/8 suites)**.
+  - `node scripts/verify-stage5-command.cjs`: **PASS (9/9 suites)**.
+- **Application Behavior & Stored Data**: Zero UI changes, zero behavior change, zero storage modifications.
+
+
 
 
 

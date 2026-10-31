@@ -27,10 +27,6 @@ import { spatialNavStore, useSpatialNav, type CommandPanel } from '../state/use-
 import { securityService } from '../../core/security-service';
 import { cyberAudio } from '../../cyber-audio';
 import type { PerformanceMode } from '../performance-mode';
-import type { Incident, Severity } from '../../core/models/incident';
-import type { Alert } from '../../core/models/detection';
-import type { Asset } from '../../core/models/entity';
-import type { ResponseAction } from '../../core/models/response';
 import type { Case } from '../../core/models/case';
 import type { ThreatIntelRecord } from '../../core/models/threat-intel';
 import type { DetectionRule } from '../../core/models/detection';
@@ -38,26 +34,16 @@ import {
   ShieldAlert,
   AlertTriangle,
   Server,
-  Activity,
   Zap,
-  CheckCircle2,
-  Clock,
   ArrowRight,
   ArrowLeft,
-  X,
   Users,
   Crosshair,
   Cpu,
-  Eye,
   Radio,
   FileText,
   ChevronRight,
-  Layers,
-  Sparkles,
-  Lock,
-  Workflow,
   Database,
-  Terminal,
   Minimize2,
 } from 'lucide-react';
 import './command-center-workspace.css';
