@@ -784,35 +784,36 @@ export class ConnectedSecurityProvider implements ISecurityProvider {
 
   public requestResponseAction(
     action: Omit<ResponseAction, 'id' | 'status' | 'requestedAt' | 'requestedBy'>,
-    actor: string
+    actor: string,
+    actorRole?: RoleId
   ): Promise<ResponseAction> {
-    return this.localProvider.requestResponseAction(action, actor);
+    return this.localProvider.requestResponseAction(action, actor, actorRole);
   }
 
-  public approveResponseAction(actionId: string, approver: string): Promise<ResponseAction> {
-    return this.localProvider.approveResponseAction(actionId, approver);
+  public approveResponseAction(actionId: string, approver: string, approverRole?: RoleId): Promise<ResponseAction> {
+    return this.localProvider.approveResponseAction(actionId, approver, approverRole);
   }
 
-  public rejectResponseAction(actionId: string, rejector: string, reason: string): Promise<ResponseAction> {
-    return this.localProvider.rejectResponseAction(actionId, rejector, reason);
+  public rejectResponseAction(actionId: string, rejector: string, reason: string, rejectorRole?: RoleId): Promise<ResponseAction> {
+    return this.localProvider.rejectResponseAction(actionId, rejector, reason, rejectorRole);
   }
 
   public cancelResponseAction(actionId: string, canceller: string, reason: string): Promise<ResponseAction> {
     return this.localProvider.cancelResponseAction(actionId, canceller, reason);
   }
 
-  public executeResponseAction(actionId: string, actor: string, actorRole: RoleId): Promise<ResponseAction> {
+  public executeResponseAction(actionId: string, actor?: string, actorRole?: RoleId): Promise<ResponseAction> {
     return this.localProvider.executeResponseAction(actionId, actor, actorRole);
   }
 
-  public rollbackResponseAction(actionId: string, actor: string, actorRole: RoleId): Promise<ResponseAction> {
+  public rollbackResponseAction(actionId: string, actor?: string, actorRole?: RoleId): Promise<ResponseAction> {
     return this.localProvider.rollbackResponseAction(actionId, actor, actorRole);
   }
 
   public dryRunResponseAction(
     actionId: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<{ action: ResponseAction; wouldModify: boolean; expectedStateChange: string }> {
     return this.localProvider.dryRunResponseAction(actionId, actor, actorRole);
   }

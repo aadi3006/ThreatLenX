@@ -308,15 +308,18 @@ export function canEscalate(fromRole: RoleId, _toRole: RoleId): boolean {
   return hasPermission(fromRole, 'INCIDENT_ESCALATE');
 }
 
-export function canRequestContainment(roleId: RoleId): boolean {
+export function canRequestContainment(roleId?: RoleId): boolean {
+  if (!roleId) return false;
   return hasPermission(roleId, 'CONTAINMENT_REQUEST');
 }
 
-export function canApproveContainment(roleId: RoleId): boolean {
+export function canApproveContainment(roleId?: RoleId): boolean {
+  if (!roleId) return false;
   return hasPermission(roleId, 'CONTAINMENT_APPROVE');
 }
 
-export function canExecuteSOAR(roleId: RoleId): boolean {
+export function canExecuteSOAR(roleId?: RoleId): boolean {
+  if (!roleId) return false;
   return hasPermission(roleId, 'SOAR_EXECUTE');
 }
 
@@ -530,7 +533,7 @@ export function canGenerateAiAnalysis(roleId?: RoleId): boolean {
 }
 
 export function canProposeResponseAction(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'PROPOSE_RESPONSE_ACTION');
 }
 
@@ -560,7 +563,7 @@ export function canResolveSyncConflict(roleId?: RoleId): boolean {
 }
 
 export function canUseExternalResponse(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'USE_EXTERNAL_RESPONSE');
 }
 
@@ -580,12 +583,12 @@ export function canCreateFinding(roleId?: RoleId): boolean {
 }
 
 export function canExecuteResponse(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return canExecuteSOAR(roleId);
 }
 
 export function canApproveSensitiveAction(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return roleId === 'SOC_MANAGER' || roleId === 'PLATFORM_ADMIN';
 }
 

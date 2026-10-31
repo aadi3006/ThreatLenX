@@ -1780,3 +1780,75 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 
 
 
+
+## [2026-11-01] Containment Authorization Hardening & RBAC Enforcement
+
+### 1. Overview & Objectives
+- Hardened authorization for containment request, approval, rejection, and execution across the `SecurityService` → `LocalProvider` pipeline.
+- Enforced active session requirements on all mutating response action endpoints and eliminated privileged missing-session role fallbacks (`session?.role ?? 'L2_ANALYST'` and `session?.role ?? 'SOC_MANAGER'`).
+- Hardened all response-related permission helpers (`canRequestContainment`, `canApproveContainment`, `canExecuteSOAR`, `canExecuteResponse`, `canApproveSensitiveAction`, `canProposeResponseAction`, `canUseExternalResponse`) in `app/core/auth/rbac.ts` to strictly fail-closed (`return false`) when `roleId` is missing or undefined.
+- Ensured automated and system operations remain explicit without ever inferring privilege from an unauthenticated context.
+- Verified missing-session and unauthorized-role denial before mutations, alongside authorized success flows, using isolated storage.
+
+---
+
+### 2. Implementation Summary
+
+#### `app/core/auth/rbac.ts`
+- **Fail-Closed Role Guards**:
+  - `canRequestContainment(roleId?: RoleId)`: Added guard `if (!roleId) return false;`.
+  - `canApproveContainment(roleId?: RoleId)`: Added guard `if (!roleId) return false;`.
+  - `canExecuteSOAR(roleId?: RoleId)`: Added guard `if (!roleId) return false;`.
+  - `canExecuteResponse(roleId?: RoleId)`: Replaced `if (!roleId) return true;` with `if (!roleId) return false;`.
+  - `canApproveSensitiveAction(roleId?: RoleId)`: Replaced `if (!roleId) return true;` with `if (!roleId) return false;`.
+  - `canProposeResponseAction(roleId?: RoleId)`: Replaced `if (!roleId) return true;` with `if (!roleId) return false;`.
+  - `canUseExternalResponse(roleId?: RoleId)`: Replaced `if (!roleId) return true;` with `if (!roleId) return false;`.
+
+#### `app/core/security-service.ts`
+- **Active Session & RBAC Enforcement**:
+  - Imported `canRequestContainment`, `canApproveContainment`, and `canExecuteSOAR` from `./auth/rbac`.
+  - `requestResponseAction`: Asserts active session via `this._assertSession()`, verifies `canRequestContainment(session.role)`, and passes `session.role` down to the provider.
+  - `approveResponseAction`: Asserts active session, verifies `canApproveContainment(session.role)`, and forwards `session.role`.
+  - `rejectResponseAction`: Asserts active session, verifies `canApproveContainment(session.role)`, and forwards `session.role`.
+  - `cancelResponseAction`: Asserts active session, verifies `canRequestContainment(session.role) || canApproveContainment(session.role)`.
+  - `executeResponseAction`: Asserts active session, verifies `canExecuteSOAR(session.role)`.
+  - `rollbackResponseAction`: Asserts active session, verifies `canExecuteSOAR(session.role)`.
+  - `dryRunResponseAction`: Asserts active session, verifies `canRequestContainment(session.role) || canExecuteSOAR(session.role)`.
+
+#### `app/core/providers/local-provider.ts`
+- **Eliminated Missing-Session Role Fallbacks**:
+  - `requestResponseAction`: Removed fallback to `'L2_ANALYST'`. Requires active session or explicit `actorRole` parameter; verifies `canRequestContainment(role)` before creating action or audit entries.
+  - `approveResponseAction`: Removed fallback to `'SOC_MANAGER'`. Requires active session or explicit `approverRole` parameter; verifies `canApproveContainment(role)` before mutating action state.
+  - `rejectResponseAction`: Removed fallback to `'SOC_MANAGER'`. Requires active session or explicit `rejectorRole` parameter; verifies `canApproveContainment(role)` before mutating action state.
+  - `cancelResponseAction`: Replaced hardcoded `'ANALYST'` fallback with active session requirement and verification of `canRequestContainment(role) || canApproveContainment(role)`.
+  - `executeResponseAction`: Requires active session or explicit `actorRole` parameter; moves `canExecuteSOAR(role)` RBAC validation to execute first before action lookup, state machine checks, or canonical asset mutations.
+  - `rollbackResponseAction`: Requires active session or explicit `actorRole`; checks `canExecuteSOAR(role)` before lookup or mutations.
+  - `dryRunResponseAction`: Requires active session or explicit `actorRole`; checks `canRequestContainment(role) || canExecuteSOAR(role)` before simulation.
+  - `acceptAiActionProposal` / `rejectAiActionProposal`: Requires active session or explicit role without defaulting to `L2_ANALYST`; forwards explicit actor and role to downstream containment requests.
+
+#### `app/core/providers/provider-interface.ts` & `app/core/providers/connected-provider.ts`
+- Updated `ISecurityProvider` interface and `ConnectedSecurityProvider` delegation signatures to accept optional `actorRole`, `approverRole`, and `rejectorRole` arguments across response action lifecycle methods.
+
+#### `scripts/test-containment-authorization.ts`
+- Created dedicated verification suite with isolated in-memory IndexedDB:
+  1. **RBAC Unit Checks**: Validates fail-closed behavior on `undefined`/`null` for all containment helpers and verifies capability sets for each role (`L1_ANALYST`, `L2_ANALYST`, `INCIDENT_RESPONDER`, `THREAT_HUNTER`, `SOC_MANAGER`, `PLATFORM_ADMIN`).
+  2. **Missing Session Denial**: Verifies unauthenticated callers to `SecurityService` and `LocalProvider` are blocked across request, approve, reject, execute, rollback, and dry-run with 0 models, assets, or audits mutated.
+  3. **Unauthorized Role Denial**: Verifies `L1_ANALYST` cannot request containment; `L2_ANALYST` cannot approve, reject, execute, or rollback containment, ensuring state remains `PENDING_APPROVAL` with zero target mutations.
+  4. **Authorized Success Lifecycle**: Verifies `L2_ANALYST` can request containment; `SOC_MANAGER` approves; `INCIDENT_RESPONDER` executes action, mutating asset to `ISOLATED` and incident to `CONTAINING`; `INCIDENT_RESPONDER` rolls back, restoring asset to `HEALTHY`; and rejection flow correctly rejects actions and halts execution.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Containment Authorization Suite (`npx tsx scripts/test-containment-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all RBAC unit tests, missing session denials, unauthorized role blocks, and authorized lifecycles passed).
+2. **Threat Hunting Engine Verification Suite (`npx tsx scripts/test-step5-hunting.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 11 suites passed).
+3. **Stage 5 Hub & Navigation Suite (`node scripts/test-hub-stage5.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, 6-zone navigation, keyboard shortcuts, and 100% IDB data preservation passed).
+4. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+5. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly).
+6. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).

@@ -254,17 +254,18 @@ export interface ISecurityProvider {
   // Response Actions & Reusable SOAR Platform
   requestResponseAction(
     action: Omit<ResponseAction, 'id' | 'status' | 'requestedAt' | 'requestedBy'>,
-    actor: string
+    actor: string,
+    actorRole?: RoleId
   ): Promise<ResponseAction>;
-  approveResponseAction(actionId: string, approver: string): Promise<ResponseAction>;
-  rejectResponseAction(actionId: string, rejector: string, reason: string): Promise<ResponseAction>;
+  approveResponseAction(actionId: string, approver: string, approverRole?: RoleId): Promise<ResponseAction>;
+  rejectResponseAction(actionId: string, rejector: string, reason: string, rejectorRole?: RoleId): Promise<ResponseAction>;
   cancelResponseAction(actionId: string, canceller: string, reason: string): Promise<ResponseAction>;
-  executeResponseAction(actionId: string, actor: string, actorRole: RoleId): Promise<ResponseAction>;
-  rollbackResponseAction(actionId: string, actor: string, actorRole: RoleId): Promise<ResponseAction>;
+  executeResponseAction(actionId: string, actor?: string, actorRole?: RoleId): Promise<ResponseAction>;
+  rollbackResponseAction(actionId: string, actor?: string, actorRole?: RoleId): Promise<ResponseAction>;
   dryRunResponseAction(
     actionId: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<{ action: ResponseAction; wouldModify: boolean; expectedStateChange: string }>;
 
   // SOAR Playbook Management

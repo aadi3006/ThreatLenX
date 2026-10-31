@@ -111,7 +111,7 @@ import type {
   SocActivityTimelineItem,
   MetricProvenance,
 } from './models/metrics';
-import { canViewSocMetrics, canViewOperationalData, canExecuteThreatHunt } from './auth/rbac';
+import { canViewSocMetrics, canViewOperationalData, canExecuteThreatHunt, canRequestContainment, canApproveContainment, canExecuteSOAR } from './auth/rbac';
 import {
   canViewSimulations,
   canRunSimulation,
@@ -1342,7 +1342,10 @@ export class SecurityService {
     action: Omit<ResponseAction, 'id' | 'status' | 'requestedAt' | 'requestedBy'>
   ): Promise<ResponseAction> {
     const session = this._assertSession();
-    const ra = await this._requireProvider().requestResponseAction(action, session.username);
+    if (!canRequestContainment(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot request response actions`);
+    }
+    const ra = await this._requireProvider().requestResponseAction(action, session.username, session.role);
     this._emit('RESPONSE_ACTION_UPDATED');
     this._emit('AUDIT_APPENDED');
     return ra;
@@ -1350,7 +1353,10 @@ export class SecurityService {
 
   async approveResponseAction(actionId: string): Promise<ResponseAction> {
     const session = this._assertSession();
-    const ra = await this._requireProvider().approveResponseAction(actionId, session.username);
+    if (!canApproveContainment(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot approve response actions`);
+    }
+    const ra = await this._requireProvider().approveResponseAction(actionId, session.username, session.role);
     this._emit('RESPONSE_ACTION_UPDATED');
     this._emit('AUDIT_APPENDED');
     return ra;
@@ -1358,7 +1364,10 @@ export class SecurityService {
 
   async rejectResponseAction(actionId: string, reason: string): Promise<ResponseAction> {
     const session = this._assertSession();
-    const ra = await this._requireProvider().rejectResponseAction(actionId, session.username, reason);
+    if (!canApproveContainment(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot reject response actions`);
+    }
+    const ra = await this._requireProvider().rejectResponseAction(actionId, session.username, reason, session.role);
     this._emit('RESPONSE_ACTION_UPDATED');
     this._emit('AUDIT_APPENDED');
     return ra;
@@ -1366,6 +1375,9 @@ export class SecurityService {
 
   async cancelResponseAction(actionId: string, reason: string): Promise<ResponseAction> {
     const session = this._assertSession();
+    if (!canRequestContainment(session.role) && !canApproveContainment(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot cancel response actions`);
+    }
     const ra = await this._requireProvider().cancelResponseAction(actionId, session.username, reason);
     this._emit('RESPONSE_ACTION_UPDATED');
     this._emit('AUDIT_APPENDED');
@@ -1374,6 +1386,9 @@ export class SecurityService {
 
   async executeResponseAction(actionId: string): Promise<ResponseAction> {
     const session = this._assertSession();
+    if (!canExecuteSOAR(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" does not have SOAR_EXECUTE permission`);
+    }
     const ra = await this._requireProvider().executeResponseAction(
       actionId, session.username, session.role
     );
@@ -1386,6 +1401,9 @@ export class SecurityService {
 
   async rollbackResponseAction(actionId: string): Promise<ResponseAction> {
     const session = this._assertSession();
+    if (!canExecuteSOAR(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" does not have SOAR_EXECUTE permission to perform rollback`);
+    }
     const ra = await this._requireProvider().rollbackResponseAction(
       actionId, session.username, session.role
     );
@@ -1400,6 +1418,9 @@ export class SecurityService {
     actionId: string
   ): Promise<{ action: ResponseAction; wouldModify: boolean; expectedStateChange: string }> {
     const session = this._assertSession();
+    if (!canRequestContainment(session.role) && !canExecuteSOAR(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" does not have permission to simulate response actions`);
+    }
     const res = await this._requireProvider().dryRunResponseAction(
       actionId, session.username, session.role
     );
