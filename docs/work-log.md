@@ -1695,18 +1695,88 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 
 ---
 
+
+---
+
+## Detection Engineering: Selected-Rule Reset Fix & Lifecycle Verification
+
+### 1. Task Objective & Context
+- **Issue**: In `DetectionEngineeringWorkspace.tsx`, the rule-update subscription (`securityService.subscribe('DETECTION_RULES_UPDATED', ...)`) captured the initial `selectedRuleId` in a stale closure. Every rule update or reload caused `if (!selectedRuleId && data.length > 0) setSelectedRuleId(data[0].id)` to execute, resetting any active non-first rule selection back to the first rule.
+- **Requirements**:
+  1. Inspect `DetectionEngineeringWorkspace.tsx`: resolve stale closure in rule-update subscription.
+  2. Preserve the selected rule across reloads/updates when it still exists in the fetched rules.
+  3. Select a fallback only when no rule is selected or the selected rule was removed (fallback to `data[0].id` if `data.length > 0`, else `null`).
+  4. Prevent updates after unmount and prevent duplicate subscriptions.
+  5. Preserve UI appearance, permissions, features, and stored data.
+  6. Test:
+     - Non-first rule remaining selected after its own mutation.
+     - Non-first rule remaining selected after an unrelated rule update.
+     - Selected-rule removal using isolated storage with clean fallback.
+     - Unmount cleanup and duplicate subscription prevention.
+  7. Run Detection tests, TypeScript compilation, and both production builds.
+
+---
+
+### 2. Implementation Details
+
+#### `app/spatial/detection/DetectionEngineeringWorkspace.tsx`
+- **Stale Closure Elimination & Selection Preservation**:
+  - Added `selectedRuleIdRef` (`useRef<string | null>(initialRuleId || null)`) and synced it with `selectedRuleId` state.
+  - Converted `loadRules` to a stable callback with `useCallback(..., [])` using functional state update:
+    ```typescript
+    setSelectedRuleId((currentId) => {
+      const targetId = currentId ?? selectedRuleIdRef.current;
+      if (targetId) {
+        const matched = data.find((r) => r.id === targetId || r.ruleId === targetId);
+        if (matched) {
+          selectedRuleIdRef.current = matched.id;
+          return matched.id;
+        }
+      }
+      const fallback = data.length > 0 ? data[0].id : null;
+      selectedRuleIdRef.current = fallback;
+      return fallback;
+    });
+    ```
+  - When a rule update event is received, if the currently selected rule exists in `data`, it remains selected across own mutations and unrelated rule updates.
+  - If the selected rule is deleted or absent, selection cleanly falls back to `data[0].id` (or `null` if list is empty).
+- **Unmount Protection & Memory Leak Prevention**:
+  - Introduced `isMountedRef` (`useRef(true)`), set to `false` in `useEffect` cleanup.
+  - Guarded all asynchronous callbacks (`loadRules`, `handleValidate`, `handleRunSimulation`, `handlePublish`, `handleToggleEnable`, `handleDeprecate`, `handleCreateDraft`, `handleCloneDraft`, `handleSaveEdits`, `handleCompareVersions`, `showNotification`, and version history loaders) with `if (!isMountedRef.current) return;`.
+  - Added `notifTimerRef` to clear any pending toast timeouts on unmount.
+- **Subscription Lifecycle & Deduplication**:
+  - Subscribed to `DETECTION_RULES_UPDATED` within `useEffect(..., [loadRules])`.
+  - Cleaned up subscription via returned `unsub()`, ensuring exactly one active listener at any time and zero duplicate subscriptions.
+
+#### `scripts/test-detection-selection-lifecycle.cjs`
+- Created dedicated end-to-end verification suite in headless Chrome using isolated browser profile and isolated storage (`--user-data-dir=/tmp/...`):
+  1. **Non-first rule selection**: Selected rule index 2 (`DET-GW-001`) from initial 7 rules.
+  2. **Own mutation test**: Mutated rule 2 via toggle enable/disable; verified rule 2 remains selected (`.det-rule-card.selected` and `.det-active-rule-pill` still display `DET-GW-001`).
+  3. **Unrelated rule update test**: Mutated unrelated rule `DET-AUTH-001` via `securityService.updateDetectionRuleDraft`; verified rule 2 remains selected without resetting to rule 0.
+  4. **Removal test using isolated storage**: Deleted `DET-GW-001` from isolated IndexedDB `detection_rules` store and in-memory cache, emitted `DETECTION_RULES_UPDATED`; verified selection cleanly falls back to `data[0].id` (`DET-AUTH-001`).
+  5. **Unmount & duplicate subscription prevention**: Returned to Hub, verified listener count decreased to 0; emitted `DETECTION_RULES_UPDATED` while unmounted with 0 errors; re-entered workspace and verified listener count returned to exactly 1 without duplicates.
+
+---
+
 ### 3. Verification & Test Results
 
-1. **Hunting Lifecycle Test Suite (`node scripts/test-hunting-lifecycle.cjs`)**:
-   - **Exit Code**: `0` (**PASS**, all 6 lifecycle test suites passed).
-2. **Existing Hunting Workspace Interactions (`node scripts/test-hunting-workspace-interactions.cjs`)**:
-   - **Exit Code**: `0` (**PASS**, all 12 stages passed, zero label overlaps, 100% data preservation).
-3. **TypeScript Compilation (`npx tsc --noEmit`)**:
+1. **Detection Selection Lifecycle Suite (`node scripts/test-detection-selection-lifecycle.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 8 verification steps passed).
+2. **Step 9 Detection Engineering Verification (`npx tsx scripts/test-step9-detection-engineering.ts`)**:
+   - **Exit Code**: `0` (**PASS**, 65/65 tests passed).
+3. **Step 3 Detection Engine Unit Suite (`npx tsx scripts/test-detection-engine.ts`)**:
+   - **Exit Code**: `0` (**PASS**, 14/14 tests passed).
+4. **Stage 5 Detection Verification Suite (`node scripts/verify-stage5-detection.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 12 stages + isolated profile mutation passed).
+5. **Stage 5 Hub & Navigation Suite (`node scripts/test-hub-stage5.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 6 zone navigations, keyboard shortcuts, and 100% IDB data preservation passed).
+6. **TypeScript Compilation (`npx tsc --noEmit`)**:
    - **Exit Code**: `0` (**PASS**, 0 errors).
-4. **Framework Production Build (`npm run build`)**:
-   - **Exit Code**: `0` (**PASS**, Vinext build completed; `grep -rn "__securityService" dist/` returns 0 matches).
-5. **Static / Vercel Build (`npm run build:vercel`)**:
-   - **Exit Code**: `0` (**PASS**, Vite production bundle generated; `grep -rn "__securityService" dist/vercel/` returns 0 matches).
+7. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly).
+8. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
 
 
 

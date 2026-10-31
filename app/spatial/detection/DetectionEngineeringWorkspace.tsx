@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ShieldAlert,
   Search,
@@ -68,26 +68,66 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
   const [ruleVersions, setRuleVersions] = useState<DetectionRuleVersion[]>([]);
   const [diffResult, setDiffResult] = useState<RuleDiffResult | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const notifTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
+  const selectedRuleIdRef = useRef<string | null>(initialRuleId || null);
 
-  const loadRules = async () => {
+  // Keep selectedRuleIdRef in sync with state
+  useEffect(() => {
+    selectedRuleIdRef.current = selectedRuleId;
+  }, [selectedRuleId]);
+
+  // Sync if initialRuleId prop changes
+  useEffect(() => {
+    if (initialRuleId) {
+      selectedRuleIdRef.current = initialRuleId;
+      setSelectedRuleId(initialRuleId);
+    }
+  }, [initialRuleId]);
+
+  const loadRules = useCallback(async () => {
     try {
       const data = await securityService.getDetectionRules();
+      if (!isMountedRef.current) return;
       setRules(data);
-      if (!selectedRuleId && data.length > 0) {
-        setSelectedRuleId(data[0].id);
-      }
+      setSelectedRuleId((currentId) => {
+        // Priority: current state -> ref fallback
+        const targetId = currentId ?? selectedRuleIdRef.current;
+        if (targetId) {
+          const matched = data.find((r) => r.id === targetId || r.ruleId === targetId);
+          if (matched) {
+            selectedRuleIdRef.current = matched.id;
+            return matched.id;
+          }
+        }
+        // Fallback only when no rule is selected or the selected rule was removed
+        const fallback = data.length > 0 ? data[0].id : null;
+        selectedRuleIdRef.current = fallback;
+        return fallback;
+      });
     } catch (err) {
-      console.error('Failed to load detection rules', err);
+      if (isMountedRef.current) {
+        console.error('Failed to load detection rules', err);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadRules();
     const unsub = securityService.subscribe('DETECTION_RULES_UPDATED', () => {
-      loadRules();
+      if (isMountedRef.current) {
+        loadRules();
+      }
     });
-    return () => unsub();
-  }, []);
+    return () => {
+      isMountedRef.current = false;
+      unsub();
+      if (notifTimerRef.current) {
+        clearTimeout(notifTimerRef.current);
+      }
+    };
+  }, [loadRules]);
 
   const selectedRule = useMemo(() => {
     return rules.find((r) => r.id === selectedRuleId || r.ruleId === selectedRuleId) || null;
@@ -111,8 +151,24 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
 
       // Load versions
       if (selectedRule.ruleId) {
-        securityService.getDetectionRuleVersions(selectedRule.ruleId).then(setRuleVersions).catch(console.error);
+        securityService
+          .getDetectionRuleVersions(selectedRule.ruleId)
+          .then((versions) => {
+            if (isMountedRef.current) {
+              setRuleVersions(versions);
+            }
+          })
+          .catch(console.error);
       }
+    } else {
+      setEditName('');
+      setEditDesc('');
+      setEditMitre('');
+      setEditConditions([]);
+      setValidationResult(null);
+      setSimResult(null);
+      setIsEditing(false);
+      setRuleVersions([]);
     }
   }, [selectedRuleId, selectedRule?.updatedAt]);
 
@@ -168,8 +224,16 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
   }, [rules, searchTerm, statusFilter]);
 
   const showNotification = (msg: string) => {
+    if (!isMountedRef.current) return;
+    if (notifTimerRef.current) {
+      clearTimeout(notifTimerRef.current);
+    }
     setNotification(msg);
-    setTimeout(() => setNotification(null), 3500);
+    notifTimerRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setNotification(null);
+      }
+    }, 3500);
   };
 
   const handleValidate = async () => {
@@ -177,6 +241,7 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
     try {
       cyberAudio.playClick();
       const res = await securityService.validateDetectionRule(selectedRule);
+      if (!isMountedRef.current) return;
       setValidationResult(res);
       if (res.valid) {
         cyberAudio.playSuccess();
@@ -186,6 +251,7 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
         showNotification(`⚠ Validation found ${res.errors.length} errors`);
       }
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Validation error: ${err.message}`);
     }
   };
@@ -196,15 +262,19 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
     cyberAudio.playSelect();
     try {
       const res = await securityService.testDetectionRule(selectedRule, { sampleLimit: 200 });
+      if (!isMountedRef.current) return;
       setSimResult(res);
       cyberAudio.playSuccess();
       showNotification(
         `Simulation finished: ${res.testRun.eventsMatched} matches out of ${res.testRun.eventsEvaluated} events evaluated`
       );
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Simulation failed: ${err.message}`);
     } finally {
-      setIsSimulating(false);
+      if (isMountedRef.current) {
+        setIsSimulating(false);
+      }
     }
   };
 
@@ -214,10 +284,12 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
     try {
       cyberAudio.playClick();
       await securityService.publishDetectionRule(selectedRule.id, changeDesc);
+      if (!isMountedRef.current) return;
       cyberAudio.playSuccess();
       showNotification(`✓ Rule published as version ${(selectedRule.version ?? 1) + 1}`);
       await loadRules();
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Publication failed: ${err.message}`);
     }
   };
@@ -228,13 +300,16 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
       cyberAudio.playClick();
       if (selectedRule.enabled) {
         await securityService.disableDetectionRule(selectedRule.id);
+        if (!isMountedRef.current) return;
         showNotification('Rule DISABLED');
       } else {
         await securityService.enableDetectionRule(selectedRule.id);
+        if (!isMountedRef.current) return;
         showNotification('✓ Rule ENABLED for live evaluation');
       }
       await loadRules();
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Failed to toggle rule state: ${err.message}`);
     }
   };
@@ -245,9 +320,11 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
     try {
       cyberAudio.playFailure();
       await securityService.deprecateDetectionRule(selectedRule.id);
+      if (!isMountedRef.current) return;
       showNotification('Rule DEPRECATED');
       await loadRules();
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Failed to deprecate rule: ${err.message}`);
     }
   };
@@ -263,11 +340,14 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
         conditions: [{ field: 'category', operator: 'EQUALS', value: 'PROCESS' }],
         changeDescription: 'Initial analyst draft',
       });
+      if (!isMountedRef.current) return;
       showNotification(`Created draft ${newRule.ruleId || newRule.id}`);
-      await loadRules();
+      selectedRuleIdRef.current = newRule.id;
       setSelectedRuleId(newRule.id);
       setIsEditing(true);
+      await loadRules();
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Failed to create draft: ${err.message}`);
     }
   };
@@ -287,10 +367,13 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
         tags: [...(selectedRule.tags || []), 'cloned'],
         changeDescription: `Cloned from ${selectedRule.name} v${selectedRule.version ?? 1}`,
       });
+      if (!isMountedRef.current) return;
       showNotification(`Cloned rule as draft: ${cloned.ruleId}`);
-      await loadRules();
+      selectedRuleIdRef.current = cloned.id;
       setSelectedRuleId(cloned.id);
+      await loadRules();
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Clone failed: ${err.message}`);
     }
   };
@@ -307,10 +390,12 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
         mitreTechniqueId: editMitre || undefined,
         conditions: editConditions,
       });
+      if (!isMountedRef.current) return;
       setIsEditing(false);
       showNotification('✓ Detection rule updated');
       await loadRules();
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Update failed: ${err.message}`);
     }
   };
@@ -320,9 +405,11 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
     try {
       cyberAudio.playClick();
       const diff = await securityService.diffRuleVersions(selectedRule.ruleId, v1, v2);
+      if (!isMountedRef.current) return;
       setDiffResult(diff);
       setActiveTab('DIFF');
     } catch (err: any) {
+      if (!isMountedRef.current) return;
       showNotification(`Diff failed: ${err.message}`);
     }
   };
@@ -488,6 +575,7 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
                   className={`det-rule-card ${isSelected ? 'selected' : ''}`}
                   onClick={() => {
                     cyberAudio.playSelect();
+                    selectedRuleIdRef.current = rule.id;
                     setSelectedRuleId(rule.id);
                   }}
                   role="button"
@@ -496,6 +584,7 @@ export const DetectionEngineeringWorkspace: React.FC<DetectionEngineeringWorkspa
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       cyberAudio.playSelect();
+                      selectedRuleIdRef.current = rule.id;
                       setSelectedRuleId(rule.id);
                     }
                   }}
