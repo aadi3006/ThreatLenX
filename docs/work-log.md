@@ -1392,6 +1392,66 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
   - `node scripts/verify-stage5-command.cjs`: **PASS (9/9 suites)**.
 - **Application Behavior & Stored Data**: Zero UI changes, zero behavior change, zero storage modifications.
 
+---
+
+## ThreatLenX Lint Cleanup: Batch 3 Execution & Verification
+
+### 1. Scope & Execution
+- **Target Directories**:
+  - `app/spatial/cases/`
+  - `app/spatial/evidence/`
+  - `app/spatial/hunting/`
+- **Target Rule**: Only unused imports (`eslint(no-unused-vars)`).
+- **Audit & Removals**:
+  - `app/spatial/cases/CaseWorkspace.tsx`: Removed 10 unused Lucide icon imports:
+    - `AlertTriangle`, `User`, `Users`, `Circle`, `XCircle`, `Check`, `FileCheck`, `HelpCircle`, `Server`, `Terminal`.
+    - Preserved side-effect CSS import `import './case-workspace.css';`.
+    - Preserved parameter `perfMode`, state, functions, and JSX icon usages (e.g., `CheckCircle2`, `Clock`, `Layers`).
+  - `app/spatial/evidence/EvidenceWorkspace.tsx`: Removed 5 unused Lucide icon imports:
+    - `Shield`, `ShieldAlert`, `User`, `CheckCircle2`, `Activity`.
+    - Preserved side-effect CSS import `import './evidence-workspace.css';`.
+    - Preserved parameters (`perfMode`, `onOpenThreatHunt`), state setters (`setFormFileMime`), and variables (`availableHunts`, `availableEvents`, `userCanApprove`).
+  - `app/spatial/hunting/ThreatHuntingWorkspace.tsx`: Removed 13 unused Lucide icon imports:
+    - `Layers`, `Clock`, `AlertTriangle`, `Link`, `PlusCircle`, `CheckCircle2`, `RotateCcw`, `Activity`, `Cpu`, `User`, `Server`, `ArrowRight`, `CornerDownRight`.
+    - Preserved side-effect CSS import `import './threat-hunting.css';`.
+    - Preserved all functions, state machines, parameters, and query execution expressions.
+- **Preservation Verification**:
+  - Zero functions, state, parameters, or executable expressions removed or modified.
+  - Zero CSS or side-effect imports removed.
+  - Zero formatting changes outside the removed import lines.
+
+---
+
+### 2. Before / After Metrics
+
+| Metric | Before Batch 3 | After Batch 3 | Net Reduction |
+| :--- | :---: | :---: | :---: |
+| **Total Reported Oxlint Errors** | **1,243** | **1,215** | **-28 errors (-2.25%)** |
+| Target Directories Oxlint Errors | 146 | **118** | **-28 errors (-19.18%)** |
+| Unused Imports in `app/spatial/cases/` | 10 | **0** | **-10 errors (100% resolved)** |
+| Unused Imports in `app/spatial/evidence/` | 5 | **0** | **-5 errors (100% resolved)** |
+| Unused Imports in `app/spatial/hunting/` | 13 | **0** | **-13 errors (100% resolved)** |
+| Total `eslint(no-unused-vars)` Across Codebase | 339 | **311** | **-28 errors** |
+
+---
+
+### 3. Build & Runtime Verification
+- **TypeScript (`npx tsc --noEmit`)**: **PASS (0 errors)**.
+- **Production Builds**:
+  - `npm run build` (`vinext build`): **PASS** (all chunks and RSC manifests generated).
+  - `npm run build:vercel` (`vite build --config vite.vercel.config.ts`): **PASS** (`dist/vercel/index.html` built cleanly in 310ms).
+- **Domain Test Suites**:
+  - `npx tsx scripts/test-step6-cases.ts`: **PASS (10/10 suites)**.
+  - `npx tsx scripts/test-step7-evidence.ts`: **PASS (11/11 suites)**.
+  - `npx tsx scripts/test-step5-hunting.ts`: **PASS (10/10 suites)**.
+  - `npx tsx scripts/test-soc-navigation.ts`: **PASS (7/7 suites)**.
+- **Workspace Browser Checks**:
+  - `node scripts/test-case-workspace-interactions.cjs`: **PASS (all 12 verification stages, perfect data preservation)**.
+  - `node scripts/test-hunting-workspace-interactions.cjs`: **PASS (all 12 verification stages, 0 label overlaps)**.
+  - `node scripts/test-evidence-workspace-interactions.cjs`: **PASS (all 12 verification stages, 100% data preservation)**.
+  - `node scripts/test-evidence-integrity-persistence.cjs`: **PASS (all 3 integrity and refresh regression suites)**.
+- **Application Behavior & Stored Data**: Zero UI changes, zero behavior change, zero storage modifications.
+
 
 
 

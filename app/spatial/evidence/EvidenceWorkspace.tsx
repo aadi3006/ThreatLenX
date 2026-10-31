@@ -59,13 +59,9 @@ import { cyberAudio } from '../../cyber-audio';
 import {
   ArrowLeft,
   FileCheck,
-  Shield,
   ShieldCheck,
-  ShieldAlert,
   AlertTriangle,
   Clock,
-  User,
-  CheckCircle2,
   RotateCcw,
   Check,
   X,
@@ -80,7 +76,6 @@ import {
   Fingerprint,
   Link2,
   Hash,
-  Activity,
   GitBranch,
 } from 'lucide-react';
 import './evidence-workspace.css';
