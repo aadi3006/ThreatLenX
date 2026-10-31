@@ -314,88 +314,151 @@ async function runHuntingLifecycleSuite() {
     console.log('\n--- TEST 4: In-Flight Race Condition (Run A Finishes After Run B) ---');
 
     try {
-      // Mock runThreatHunt to delay Run A resolution past Run B's completion
+      // Install controlled mock: promises resolve only when manually signaled via window.__resolvers[id]
       await evalJson(`(() => {
         const svc = window.__securityService;
         if (!svc) throw new Error('window.__securityService not available');
         window.__origRunThreatHunt = svc.runThreatHunt.bind(svc);
-        
+
         let callCount = 0;
         window.__raceLog = [];
-        
-        svc.runThreatHunt = async (query) => {
+        window.__resolvers = {};
+
+        svc.runThreatHunt = (query) => {
           callCount++;
           const callId = callCount;
-          window.__raceLog.push({ callId, phase: 'start', queryCategory: query.categories?.[0] });
-          
-          if (callId === 1) {
-            // Run A: Start first, but delay resolution by 500ms so it resolves AFTER Run B
-            const resultA = await window.__origRunThreatHunt(query);
-            await new Promise(r => setTimeout(r, 500));
-            window.__raceLog.push({ callId, phase: 'finish', queryCategory: query.categories?.[0] });
-            return resultA;
-          } else {
-            // Run B: Resolves quickly
-            const resultB = await window.__origRunThreatHunt(query);
-            window.__raceLog.push({ callId, phase: 'finish', queryCategory: query.categories?.[0] });
-            return resultB;
-          }
+          window.__raceLog.push({ callId, phase: 'start', queryCategory: query.categories?.[0], time: Date.now() });
+
+          return new Promise((resolve, reject) => {
+            window.__resolvers[callId] = () => {
+              window.__origRunThreatHunt(query)
+                .then((realResult) => {
+                  window.__raceLog.push({ callId, phase: 'finish', queryCategory: query.categories?.[0], time: Date.now() });
+                  resolve(realResult);
+                })
+                .catch(reject);
+            };
+          });
         };
       })()`);
 
-      // Click Template 0 (Run A: Suspicious PowerShell Execution, category: PROCESS)
-      // Then 30ms later, click Template 1 (Run B: Repeated Authentication Failures, category: AUTHENTICATION)
-      const raceTrigger = await evalJson(`(() => {
+      // 1. Trigger Run A (Template 0: Suspicious PowerShell Execution, PROCESS)
+      const triggerA = await evalJson(`(() => {
         const cards = document.querySelectorAll('.hunt-template-card');
         if (cards.length < 2) return { error: 'Not enough template cards' };
-        cards[0].click(); // Run A
-        setTimeout(() => {
-          cards[1].click(); // Run B
-        }, 30);
-        return {
-          nameA: cards[0].querySelector('.tpl-name')?.textContent?.trim(),
-          nameB: cards[1].querySelector('.tpl-name')?.textContent?.trim()
-        };
+        cards[0].click();
+        return { name: cards[0].querySelector('.tpl-name')?.textContent?.trim() };
       })()`);
-      assert(!raceTrigger.error, `Triggered Run A ("${raceTrigger.nameA}") and Run B ("${raceTrigger.nameB}")`);
+      assert(!triggerA.error, `Triggered Run A ("${triggerA.name}")`);
 
-      // Wait until pipeline settles to RUN HUNT
-      let raceSettled = false;
+      // 2. Wait until mocked runThreatHunt records Run A's start
+      let runAStarted = false;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        runAStarted = await evalJson(`Boolean(window.__raceLog?.some(l => l.callId === 1 && l.phase === 'start'))`);
+        if (runAStarted) break;
+      }
+      assert(runAStarted, 'Mocked runThreatHunt recorded Run A start (Run A is now in-flight and suspended)');
+
+      // 3. Only then trigger Run B (Template 1: Repeated Authentication Failures, AUTHENTICATION)
+      const triggerB = await evalJson(`(() => {
+        const cards = document.querySelectorAll('.hunt-template-card');
+        cards[1].click();
+        return { name: cards[1].querySelector('.tpl-name')?.textContent?.trim() };
+      })()`);
+      assert(!triggerB.error, `Triggered Run B ("${triggerB.name}") only after Run A started`);
+
+      // 4. Wait until mocked runThreatHunt records Run B's start
+      let runBStarted = false;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        runBStarted = await evalJson(`Boolean(window.__raceLog?.some(l => l.callId === 2 && l.phase === 'start'))`);
+        if (runBStarted) break;
+      }
+      assert(runBStarted, 'Mocked runThreatHunt recorded Run B start (both calls have started)');
+
+      // 5. Use controlled promise resolution: Resolve B first!
+      await evalJson(`(() => {
+        if (window.__resolvers && window.__resolvers[2]) {
+          window.__resolvers[2]();
+        }
+      })()`);
+
+      // Wait for Run B to finish and pipeline to settle to RUN HUNT
+      let runBSettled = false;
       for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 60));
-        const stateText = await evalJson(`document.querySelector('.hunt-btn-run')?.textContent?.trim()`);
-        if (stateText === 'RUN HUNT') {
-          raceSettled = true;
+        await new Promise((r) => setTimeout(r, 50));
+        const res = await evalJson(`(() => {
+          const finished = window.__raceLog?.some(l => l.callId === 2 && l.phase === 'finish');
+          const btn = document.querySelector('.hunt-btn-run')?.textContent?.trim();
+          return finished && btn === 'RUN HUNT';
+        })()`);
+        if (res) {
+          runBSettled = true;
           break;
         }
       }
-      assert(raceSettled, 'Pipeline completed cleanly after rapid consecutive runs');
+      assert(runBSettled, 'Run B finished first and settled to RUN HUNT');
 
-      // Wait additional 350ms so Run A's delayed promise (500ms) has definitely resolved in background
-      await new Promise(r => setTimeout(r, 350));
+      // 6. Only now resolve Run A (Run A finishes after Run B)
+      await evalJson(`(() => {
+        if (window.__resolvers && window.__resolvers[1]) {
+          window.__resolvers[1]();
+        }
+      })()`);
 
-      // Verify displayed results belong to Run B, NOT Run A
-      const raceCheck = await evalJson(`(() => {
+      // Wait until Run A's finish is recorded
+      let runAFinished = false;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        runAFinished = await evalJson(`Boolean(window.__raceLog?.some(l => l.callId === 1 && l.phase === 'finish'))`);
+        if (runAFinished) break;
+      }
+      assert(runAFinished, 'Run A finished after Run B (both promises are now resolved)');
+
+      // Allow microtask cycle to settle
+      await new Promise((r) => setTimeout(r, 100));
+
+      // 7. Assertions: Both calls started, B finished before A, displayed results still belong to B
+      const raceResults = await evalJson(`(() => {
+        const raceLog = window.__raceLog || [];
+        const finishA = raceLog.find(l => l.callId === 1 && l.phase === 'finish');
+        const finishB = raceLog.find(l => l.callId === 2 && l.phase === 'finish');
         const selectedEvent = document.querySelector('.inspector-val')?.textContent?.trim();
         const matchCountText = document.querySelector('.hunt-header-title')?.textContent?.trim();
         const nodeCount = document.querySelectorAll('.hunt-node').length;
         const activeTemplate = document.querySelector('.hunt-template-card.active .tpl-name')?.textContent?.trim();
-        const raceLog = window.__raceLog || [];
-        return { selectedEvent, matchCountText, nodeCount, activeTemplate, raceLog };
+        return {
+          startA: raceLog.some(l => l.callId === 1 && l.phase === 'start'),
+          startB: raceLog.some(l => l.callId === 2 && l.phase === 'start'),
+          finishAIndex: raceLog.findIndex(l => l.callId === 1 && l.phase === 'finish'),
+          finishBIndex: raceLog.findIndex(l => l.callId === 2 && l.phase === 'finish'),
+          finishATime: finishA?.time,
+          finishBTime: finishB?.time,
+          selectedEvent,
+          matchCountText,
+          nodeCount,
+          activeTemplate
+        };
       })()`);
 
-      // Template 1 (Repeated Authentication Failures) matches evt-raw-016 (AUTHENTICATION) and has 3 events
-      // Template 0 (Suspicious PowerShell Execution) matches evt-raw-001 (PROCESS) and has 2 events
-      assert(raceCheck.selectedEvent === 'evt-raw-016', `Displayed inspector event belongs to Run B (expected 'evt-raw-016', observed '${raceCheck.selectedEvent}')`);
-      assert(raceCheck.nodeCount === 3, `Displayed constellation nodes belong to Run B (expected 3, observed ${raceCheck.nodeCount})`);
-      assert(raceCheck.activeTemplate === raceTrigger.nameB, `Active template belongs to Run B ('${raceCheck.activeTemplate}')`);
-      assert(raceCheck.raceLog.some(l => l.callId === 1 && l.phase === 'finish'), 'Run A resolved after Run B without overwriting Run B results');
+      assert(raceResults.startA && raceResults.startB, 'Both calls (A and B) started');
+      assert(raceResults.finishBIndex >= 0 && raceResults.finishAIndex > raceResults.finishBIndex, 'Run B finished before Run A');
+      assert(raceResults.selectedEvent === 'evt-raw-016', `Displayed inspector event belongs to Run B (expected 'evt-raw-016', observed '${raceResults.selectedEvent}')`);
+      assert(raceResults.nodeCount === 3, `Displayed constellation nodes belong to Run B (expected 3, observed ${raceResults.nodeCount})`);
+      assert(raceResults.activeTemplate === triggerB.name, `Active template belongs to Run B ('${raceResults.activeTemplate}')`);
     } finally {
-      // Unconditionally restore original method
+      // Unconditionally restore original method and flush any remaining resolvers
       await evalJson(`(() => {
+        if (window.__resolvers) {
+          Object.values(window.__resolvers).forEach(fn => {
+            try { fn(); } catch {}
+          });
+        }
         if (window.__origRunThreatHunt && window.__securityService) {
           window.__securityService.runThreatHunt = window.__origRunThreatHunt;
           delete window.__origRunThreatHunt;
+          delete window.__resolvers;
           delete window.__raceLog;
         }
       })()`);

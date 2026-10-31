@@ -1676,13 +1676,17 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 - Successful retry executions do not retain stale denial messages.
 
 #### `scripts/test-hunting-lifecycle.cjs`
-- **In-Flight Race Verification (Test 4)**:
-  - Intercepted `securityService.runThreatHunt` to delay Run A resolution by 500ms while Run B resolves quickly (~50ms).
-  - Triggered Run A (Template 0: "Suspicious PowerShell Execution", PROCESS) followed 30ms later by Run B (Template 1: "Repeated Authentication Failures", AUTHENTICATION).
-  - Asserted displayed inspector event ID (`.inspector-val`) is `evt-raw-016` (belonging to Run B, not `evt-raw-001` of Run A).
-  - Asserted constellation node count is 3 (belonging to Run B, not 2 of Run A).
-  - Asserted delayed Run A resolution occurs without overwriting Run B results.
-  - Wrapped mock and restored original method in a `finally` block unconditionally.
+- **Controlled In-Flight Race Verification (Test 4)**:
+  - Implemented controlled manual promise resolution (`window.__resolvers[callId]()`) rather than fixed time delays.
+  - Triggered Run A (Template 0: "Suspicious PowerShell Execution", PROCESS) and polled until `mocked runThreatHunt` recorded Run A's start (`phase: 'start'`), verifying Run A was in-flight and suspended.
+  - Only after confirming Run A started, triggered Run B (Template 1: "Repeated Authentication Failures", AUTHENTICATION) and waited until Run B started.
+  - Resolved Run B first via `window.__resolvers[2]()`, verified Run B finished and settled to `RUN HUNT`.
+  - Only then resolved Run A via `window.__resolvers[1]()`, and verified Run A finished after Run B.
+  - Asserted both calls started (`startA && startB`), B finished before A (`finishBIndex < finishAIndex`), and displayed results still belong to B after both promises resolved:
+    - Displayed inspector event ID (`.inspector-val`) is `evt-raw-016` (belonging to B, not `evt-raw-001` of A).
+    - Constellation node count is 3 (belonging to B, not 2 of A).
+    - Active template is "Repeated Authentication Failures" (belonging to B).
+  - Wrapped mock and flushed any pending resolvers inside a `finally` block unconditionally.
 - **Stale Error Notice Clearing & Finally Cleanup (Test 6)**:
   - Triggered denied execution and verified loading state exits cleanly with denial message displayed in `.hunt-status-notice`.
   - Initiated retry run and verified `.hunt-status-notice` is immediately cleared upon starting the retry.
