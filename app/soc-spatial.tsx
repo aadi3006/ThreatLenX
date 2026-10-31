@@ -91,6 +91,7 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
               onExitFocus={() => {
                 socNavStore.navigateBack();
               }}
+              onClose={handleReturnToHub}
             />
           </div>
         ) : nav.workspace === 'HUNTING' ? (

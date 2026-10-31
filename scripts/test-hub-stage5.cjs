@@ -93,7 +93,11 @@ async function runStage5HubSuite() {
 
     const evalJson = async (expr) => {
       const resp = await send('Runtime.evaluate', {
-        expression: `JSON.stringify((${expr}))`,
+        expression: `(async () => {
+          const res = await (${expr});
+          return JSON.stringify(res);
+        })()`,
+        awaitPromise: true,
         returnByValue: true
       });
       const val = resp?.result?.value;
@@ -109,25 +113,75 @@ async function runStage5HubSuite() {
       await evalJson(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '${key}', code: '${code || key}', bubbles: true, cancelable: true }))`);
     };
 
-    const returnToHub = async () => {
+    const assertReturnButton = async (zoneName, selector) => {
+      let isVisible = false;
+      for (let p = 0; p < 20; p++) {
+        const state = await evalJson(`(() => {
+          const btn = document.querySelector('${selector}');
+          if (!btn) return { exists: false, visible: false };
+          const rect = btn.getBoundingClientRect();
+          const style = window.getComputedStyle(btn);
+          const visible = style.display !== 'none' &&
+                          style.visibility !== 'hidden' &&
+                          style.opacity !== '0' &&
+                          (rect.width > 0 || rect.height > 0 || btn.offsetWidth > 0 || btn.offsetHeight > 0);
+          return { exists: true, visible };
+        })()`);
+        if (state?.exists && state?.visible) {
+          isVisible = true;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (!isVisible) {
+        throw new Error(`Return button for zone [${zoneName}] (${selector}) is missing or not visible`);
+      }
+    };
+
+    const returnToHub = async (expectedZoneName) => {
       const alreadyHub = await evalJson(`document.querySelectorAll('.hub-workspace-node').length === 6`);
       if (alreadyHub) return true;
 
+      let zoneName = expectedZoneName;
+      if (!zoneName) {
+        zoneName = await evalJson(`(() => {
+          if (document.querySelector('.spatial-universe-layer')) return 'COMMAND CENTER';
+          if (document.querySelector('.spatial-investigation-layer') || document.querySelector('.inv-list-workspace')) return 'INCIDENT INVESTIGATION';
+          if (document.querySelector('.threat-hunting-workspace')) return 'THREAT HUNTING';
+          if (document.querySelector('.case-workspace')) return 'CASE MANAGEMENT';
+          if (document.querySelector('.evidence-workspace')) return 'EVIDENCE VAULT';
+          if (document.querySelector('.detection-workspace')) return 'DETECTION RULES';
+          return null;
+        })()`);
+      }
+
+      if (zoneName) {
+        const selectorMap = {
+          'COMMAND CENTER': '.hub-return-btn',
+          'INCIDENT INVESTIGATION': '.inv-list-back-btn, button[aria-label*="Spatial Hub"]',
+          'THREAT HUNTING': '.hunt-back-btn',
+          'CASE MANAGEMENT': '.case-back-btn',
+          'EVIDENCE VAULT': '.evidence-back-btn',
+          'DETECTION RULES': '.det-back-btn'
+        };
+        const sel = selectorMap[zoneName];
+        if (sel) {
+          await assertReturnButton(zoneName, sel);
+        }
+      }
+
       await evalJson(`(() => {
         const btn = document.querySelector('.hub-return-btn') ||
+                    document.querySelector('.inv-list-back-btn') ||
                     document.querySelector('button[aria-label*="Spatial Hub"]') ||
                     document.querySelector('.inv-exit-btn') ||
                     document.querySelector('.hunt-back-btn') ||
                     document.querySelector('.hunt-close-btn') ||
                     document.querySelector('.case-back-btn') ||
                     document.querySelector('.evidence-back-btn') ||
-                    document.querySelector('.det-btn.danger');
+                    document.querySelector('.det-back-btn');
         if (btn) {
           btn.click();
-          return true;
-        }
-        if (window.__socNavStore) {
-          window.__socNavStore.goToHub();
           return true;
         }
         return false;
@@ -137,9 +191,6 @@ async function runStage5HubSuite() {
         await new Promise(r => setTimeout(r, 120));
         const count = await evalJson(`document.querySelectorAll('.hub-workspace-node').length`);
         if (count === 6) return true;
-        if (p === 12) {
-          await evalJson(`window.__socNavStore && window.__socNavStore.goToHub()`);
-        }
       }
       return false;
     };
@@ -178,7 +229,10 @@ async function runStage5HubSuite() {
         const db = e.target.result;
         const names = Array.from(db.objectStoreNames).sort();
         const report = {};
-        if (names.length === 0) return resolve(report);
+        if (names.length === 0) {
+          db.close();
+          return resolve(report);
+        }
 
         const tx = db.transaction(names, 'readonly');
         let pending = names.length * 2;
@@ -190,19 +244,31 @@ async function runStage5HubSuite() {
           const cr = store.count();
           cr.onsuccess = () => {
             report[name].count = cr.result;
-            if (--pending === 0) resolve(report);
+            if (--pending === 0) {
+              db.close();
+              resolve(report);
+            }
           };
           cr.onerror = () => {
-            if (--pending === 0) resolve(report);
+            if (--pending === 0) {
+              db.close();
+              resolve(report);
+            }
           };
 
           const kr = store.getAllKeys();
           kr.onsuccess = () => {
             report[name].keys = kr.result.slice(0, 10).map(String);
-            if (--pending === 0) resolve(report);
+            if (--pending === 0) {
+              db.close();
+              resolve(report);
+            }
           };
           kr.onerror = () => {
-            if (--pending === 0) resolve(report);
+            if (--pending === 0) {
+              db.close();
+              resolve(report);
+            }
           };
         });
       };
@@ -212,8 +278,32 @@ async function runStage5HubSuite() {
       };
     })`;
 
-    const idbBefore = await evalJson(readIdbExpr);
-    console.log(`✓ IndexedDB before check: ${Object.keys(idbBefore || {}).length} object stores.`);
+    console.log('[2b/8] Waiting for IndexedDB bootstrap on es-spatial-db before taking baseline...');
+    let idbBefore = null;
+    let storeCountBefore = 0;
+    let dbPresent = false;
+
+    for (let i = 0; i < 40; i++) {
+      try {
+        const dbs = await evalJson(`indexedDB.databases ? indexedDB.databases() : [{ name: 'es-spatial-db' }]`);
+        dbPresent = Array.isArray(dbs) && dbs.some(d => d.name === 'es-spatial-db');
+        if (dbPresent) {
+          idbBefore = await evalJson(readIdbExpr);
+          storeCountBefore = Object.keys(idbBefore || {}).length;
+          if (storeCountBefore > 0) {
+            break;
+          }
+        }
+      } catch (err) {
+        // IDB might still be opening or upgrading
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    console.log(`✓ IndexedDB before check: dbPresent=${dbPresent}, storeCount=${storeCountBefore}`);
+    if (!dbPresent || !idbBefore || storeCountBefore === 0) {
+      throw new Error(`Storage verification failed: database 'es-spatial-db' is absent or contains zero stores (found: ${storeCountBefore})`);
+    }
 
     // =========================================================================
     // SECTION 1: VERIFY ALL SIX ZONE LINKS & RETURN NAVIGATION
@@ -224,32 +314,38 @@ async function runStage5HubSuite() {
       {
         name: 'COMMAND CENTER',
         expectedSelector: '.spatial-universe-layer',
+        returnSelector: '.hub-return-btn',
         returnAction: `document.querySelector('.hub-return-btn')?.click()`
       },
       {
         name: 'INCIDENT INVESTIGATION',
         expectedSelector: '.spatial-investigation-layer',
-        returnAction: `(document.querySelector('button[aria-label*="Spatial Hub"]') || Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('SPATIAL HUB')) || document.querySelector('.hub-return-btn'))?.click()`
+        returnSelector: '.inv-list-back-btn, button[aria-label*="Spatial Hub"]',
+        returnAction: `(document.querySelector('.inv-list-back-btn') || document.querySelector('button[aria-label*="Spatial Hub"]') || Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('SPATIAL HUB')) || document.querySelector('.hub-return-btn'))?.click()`
       },
       {
         name: 'THREAT HUNTING',
         expectedSelector: '.threat-hunting-workspace',
+        returnSelector: '.hunt-back-btn',
         returnAction: `document.querySelector('.hunt-back-btn')?.click()`
       },
       {
         name: 'CASE MANAGEMENT',
         expectedSelector: '.case-workspace',
+        returnSelector: '.case-back-btn',
         returnAction: `document.querySelector('.case-back-btn')?.click()`
       },
       {
         name: 'EVIDENCE VAULT',
         expectedSelector: '.evidence-workspace',
+        returnSelector: '.evidence-back-btn',
         returnAction: `document.querySelector('.evidence-back-btn')?.click()`
       },
       {
         name: 'DETECTION RULES',
         expectedSelector: '.detection-workspace',
-        returnAction: `document.querySelector('.det-btn.danger')?.click()`
+        returnSelector: '.det-back-btn',
+        returnAction: `document.querySelector('.det-back-btn')?.click()`
       }
     ];
 
@@ -283,6 +379,9 @@ async function runStage5HubSuite() {
       console.log(`    ✓ Navigated to ${z.name} (mounted: ${mounted})`);
       if (!mounted) throw new Error(`Workspace for ${z.name} (${z.expectedSelector}) failed to mount`);
 
+      // Before return click, assert the intended button exists and is visible
+      await assertReturnButton(z.name, z.returnSelector);
+
       // Return to Hub
       await evalJson(`(() => {
         ${z.returnAction};
@@ -291,13 +390,13 @@ async function runStage5HubSuite() {
       await new Promise(r => setTimeout(r, 600));
 
       let atHub = false;
-      for (let p = 0; p < 15; p++) {
+      for (let p = 0; p < 20; p++) {
         const count = await evalJson(`document.querySelectorAll('.hub-workspace-node').length`);
         if (count === 6) {
           atHub = true;
           break;
         }
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 120));
       }
 
       console.log(`    ✓ Returned to Spatial Command Hub (nodes: 6, atHub: ${atHub})`);
@@ -430,7 +529,7 @@ async function runStage5HubSuite() {
       if (!launched) throw new Error(`Quick key [${q.key}] failed to launch ${q.name}`);
 
       // Return via returnToHub
-      const returned = await returnToHub();
+      const returned = await returnToHub(q.name);
       if (!returned) {
         throw new Error(`Failed to return to Hub after launching ${q.name}`);
       }
@@ -551,18 +650,27 @@ async function runStage5HubSuite() {
     // =========================================================================
     console.log('\n[8/8] Data preservation audit...');
     const idbAfter = await evalJson(readIdbExpr);
-    console.log(`✓ IndexedDB after check: ${Object.keys(idbAfter || {}).length} object stores.`);
+    const storeCountAfter = Object.keys(idbAfter || {}).length;
+    console.log(`✓ IndexedDB after check: ${storeCountAfter} object stores.`);
+
+    if (!idbAfter || storeCountAfter === 0) {
+      throw new Error(`Storage verification failed: database 'es-spatial-db' after test is absent or contains zero stores (found: ${storeCountAfter})`);
+    }
 
     let preserved = true;
     for (const [store, data] of Object.entries(idbBefore || {})) {
       const afterCount = idbAfter[store]?.count;
-      if (afterCount !== data.count) {
+      // audit_records is append-only log; all other stores must match exactly
+      const countValid = store === 'audit_records' ? (afterCount >= data.count) : (afterCount === data.count);
+      if (!countValid) {
         console.warn(`Mismatch in store ${store}: before=${data.count}, after=${afterCount}`);
         preserved = false;
       }
     }
     if (preserved) {
       console.log('✅ 100% DATA PRESERVATION VERIFIED: Zero stores cleared, zero records deleted, zero reseeding.');
+    } else {
+      throw new Error('Storage verification failed: store record counts mismatched after test');
     }
 
     console.log('\n=============================================================');

@@ -24,18 +24,21 @@ interface IncidentFocusPanelProps {
   allIocs?: unknown[];
   onRegister: (id: string, el: HTMLElement | null) => void;
   onExitFocus: () => void;
+  onClose?: () => void;
 }
 
 export default function IncidentFocusPanel({
   incidentId,
   onRegister,
   onExitFocus,
+  onClose,
 }: IncidentFocusPanelProps) {
   return (
     <InvestigationHub
       incidentId={incidentId}
       onRegister={onRegister}
       onExitFocus={onExitFocus}
+      onClose={onClose}
     />
   );
 }

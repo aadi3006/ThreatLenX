@@ -1452,13 +1452,64 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
   - `node scripts/test-evidence-integrity-persistence.cjs`: **PASS (all 3 integrity and refresh regression suites)**.
 - **Application Behavior & Stored Data**: Zero UI changes, zero behavior change, zero storage modifications.
 
+---
 
+## Stage 5: Investigation Hub Return Navigation Defect Resolution
 
+### 1. Task Objective & Problem Analysis
+- **User Request**: Fix the demonstrated Investigation navigation defect where returning to the Central Spatial Command Hub from the Investigation layer failed without synthetic test fallbacks (`window.__socNavStore.goToHub()`).
+- **Problem Statement**:
+  - In `app/spatial/investigation/InvestigationHub.tsx`, both the Back button (`.inv-exit-btn.inv-back-btn`) and the explicit SPATIAL HUB button (`button[aria-label*="Spatial Hub"]`) invoked the same `handleExit` handler, which triggered `onExitFocus()`.
+  - In `app/soc-spatial.tsx`, the wrapper callback passed `onExitFocus={() => { socNavStore.navigateBack(); }}` and did not supply `onClose={handleReturnToHub}`.
+  - When returning from Investigation, hierarchical `navigateBack()` popped the incident snapshot rather than transitioning the workspace to `'HUB'`, causing a single UI button click to leave the user inside the Investigation layer (`workspace === 'INVESTIGATION'`, `hubNodes === 0`).
+  - Synthetic test fallbacks in `scripts/test-hub-stage5.cjs` masked this defect by executing `window.__socNavStore.goToHub()`.
 
+---
 
+### 2. Implementation Details
 
+#### `app/spatial/investigation/InvestigationHub.tsx`
+- **Separated Navigation Actions**:
+  - Defined `handleReturnToHub`: Invoked by the button explicitly labelled `“SPATIAL HUB”` (`button[aria-label*="Spatial Hub"]`) and the error remediation button (`EXIT TO HUB`). Calls `onClose ? onClose() : socNavStore.goToHub()` directly, preserving current incident selection and investigation context.
+  - Defined `handleBack`: Invoked by the separate INCIDENTS/Back button (`.inv-exit-btn.inv-back-btn`), retaining hierarchical `triggerCollapse(() => { onExitFocus(); })` (`navigateBack()`).
+  - Preserved `Escape` keyboard navigation using hierarchical `navigateBack()`.
+- **Props Interface Extension**:
+  - Added optional `onClose?: () => void` to `InnerProps` and `InvestigationHubProps`, forwarding it to `InvestigationHubInner`.
 
+#### `app/soc-spatial.tsx`
+- **Wrapper Routing**:
+  - Provided `onClose={handleReturnToHub}` to `<InvestigationHub ... />` alongside `onExitFocus={() => { socNavStore.navigateBack(); }}`, ensuring the wrapper does not override the Hub return action.
 
+#### `app/spatial/incident-universe/IncidentFocusPanel.tsx` & `IncidentUniverse.tsx`
+- Forwarded optional `onClose` callback to `InvestigationHub` when embedded in the incident focus overlay.
 
+#### `scripts/test-hub-stage5.cjs`
+- **Removed Fallbacks**: Completely eliminated all synthetic `window.__socNavStore.goToHub()` fallback calls. Navigation back to the Hub succeeds strictly via the clicked UI element.
+- **Robust Selectors & Pre-Click Visibility**: Preserved `.det-back-btn` for Detection Rules and `.inv-list-back-btn, button[aria-label*="Spatial Hub"]` for Investigation. Added `assertReturnButton` to verify presence and visibility prior to click.
+- **IndexedDB Verification & Bootstrap Wait**: Added active polling for database bootstrap on `es-spatial-db`, failing immediately if absent or containing zero stores. Added proper promise resolution in `evalJson` with `awaitPromise: true`.
+- **Append-Only Store Handling**: Handled `audit_records` as append-only (`afterCount >= data.count`), strictly verifying that zero stores were cleared, zero records deleted, and zero reseeding occurred across all 36 stores.
 
+---
 
+### 3. Verification & Test Results
+
+1. **Stage 5 Hub Suite (`node scripts/test-hub-stage5.cjs`)**:
+   - **Exit Code**: `0` (**PASS**)
+   - All 6 Zone Links verified (Command Center, Investigation, Threat Hunting, Case Management, Evidence Vault, Detection Rules) with UI button click alone.
+   - Keyboard navigation (Arrow keys, Tab, Enter) verified.
+   - Quick launch numeric keys [1-6] verified.
+   - Layout metrics audited with zero overflow at 1440×900 and 1920×1080.
+   - Captured and saved `stage5_hub_after_1440.png` and `stage5_hub_after_1920.png`.
+   - 100% Data Preservation Verified across all 36 IndexedDB object stores (zero stores cleared, zero records deleted, zero reseeding).
+
+2. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+
+3. **Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed successfully).
+
+4. **Navigation Domain Tests (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, 7/7 suites passed: home screen, 6 reachable zones, selection preservation, dynamic IDs, hierarchical Esc, incident focus Esc, and cross-workspace deep links).
+
+5. **Real Browser Six-Zone CDP Test (`npx tsx scripts/test-browser-six-zones.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 6 zones navigated and verified in Chrome CDP).

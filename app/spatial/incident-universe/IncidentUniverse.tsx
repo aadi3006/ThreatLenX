@@ -242,6 +242,7 @@ export default function IncidentUniverse({
               allIocs={iocs}
               onRegister={handleRegister}
               onExitFocus={onExitFocus}
+              onClose={onClose}
             />
           </div>
         );

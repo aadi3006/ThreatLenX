@@ -80,9 +80,10 @@ interface InnerProps {
   panelId: string;
   onRegister: (id: string, el: HTMLElement | null) => void;
   onExitFocus: () => void;
+  onClose?: () => void;
 }
 
-function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps) {
+function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: InnerProps) {
   const {
     isLoading,
     error,
@@ -149,11 +150,20 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
     spatialNavStore.setActivePanel(view);
   };
 
-  const handleExit = () => {
+  const handleBack = () => {
     cyberAudio.playClick();
     triggerCollapse(() => {
       onExitFocus();
     });
+  };
+
+  const handleReturnToHub = () => {
+    cyberAudio.playClick();
+    if (onClose) {
+      onClose();
+    } else {
+      socNavStore.goToHub();
+    }
   };
 
   // ── Keyboard Navigation (Left/Right → cycle panel, Enter → activate, Escape → back to list) ──
@@ -225,7 +235,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
           >
             <ArrowLeft size={11} /> RETURN TO INCIDENTS
           </button>
-          <button className="inv-exit-btn" onClick={handleExit} style={{ marginLeft: 8 }}>
+          <button className="inv-exit-btn" onClick={handleReturnToHub} style={{ marginLeft: 8 }}>
             EXIT TO HUB
           </button>
         </div>
@@ -266,7 +276,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
         <div className="inv-header-left">
           <button
             className="inv-exit-btn inv-back-btn"
-            onClick={handleExit}
+            onClick={handleBack}
             title="Return to Command Center / Incidents [ESC]"
           >
             <ArrowLeft size={11} /> {
@@ -351,7 +361,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus }: InnerProps)
           </button>
           <button
             className="inv-exit-btn"
-            onClick={handleExit}
+            onClick={handleReturnToHub}
             aria-label="Exit investigation mode to Spatial Hub [ESC]"
             title="Return to Spatial Command Hub [ESC]"
           >
@@ -564,15 +574,17 @@ interface InvestigationHubProps {
   incidentId: string;
   onRegister: (id: string, el: HTMLElement | null) => void;
   onExitFocus: () => void;
+  onClose?: () => void;
 }
 
-export default function InvestigationHub({ incidentId, onRegister, onExitFocus }: InvestigationHubProps) {
+export default function InvestigationHub({ incidentId, onRegister, onExitFocus, onClose }: InvestigationHubProps) {
   return (
     <InvestigationProvider incidentId={incidentId}>
       <InvestigationHubInner
         panelId={`inv-hub-${incidentId}`}
         onRegister={onRegister}
         onExitFocus={onExitFocus}
+        onClose={onClose}
       />
     </InvestigationProvider>
   );
