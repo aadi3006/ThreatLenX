@@ -1583,3 +1583,70 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 6. **Central Spatial Hub Test (`node scripts/test-hub-stage5.cjs`)**:
    - **Exit Code**: `0` (**PASS**, all 6 zone transitions and return navigation verified, 100% data preservation verified across all 36 IndexedDB stores).
 
+---
+
+## Threat Hunting Execution Lifecycle Refinement
+
+### 1. Task Objective & Requirements
+- **User Request**: Fix only the Hunting execution lifecycle:
+  1. Stop query/filter edits from automatically executing hunts.
+  2. Preserve explicit Run Hunt, template execution, and saved-hunt Load & Run.
+  3. Cancel pending timers on unmount and prevent older runs from overwriting newer results.
+  4. Ensure denied execution exits the loading state cleanly.
+  5. Preserve UI styling, permissions, and stored data.
+  6. Test typing without execution, rapid consecutive runs, unmount during execution, and existing Hunting interactions using isolated storage. Run TypeScript and both builds.
+
+---
+
+### 2. Implementation Details
+
+#### `app/spatial/hunting/ThreatHuntingWorkspace.tsx`
+- **Decoupled Filter Edits from Execution (`handleRunHunt`)**:
+  - Maintained `currentQueryRef` to store the latest `currentQuery` synchronously without re-creating `handleRunHunt`.
+  - Removed `currentQuery` from `handleRunHunt` dependency array (`[clearPendingTimers]`), ensuring its reference remains stable across renders.
+  - The mount effect `useEffect(() => { handleRunHunt(); }, [handleRunHunt])` executes the baseline query once on mount. Subsequent typing or changing dropdowns modifies filter state without triggering execution.
+- **Run Sequence Tracking & Stale Overwrite Prevention**:
+  - Added monotonic `activeRunIdRef = useRef<number>(0)`.
+  - When `handleRunHunt` is called, `runId = ++activeRunIdRef.current` and `clearPendingTimers()` cancels all pending timers from previous runs.
+  - At every stage (`FILTERING`, `AGGREGATING`, and query resolution), guards check `activeRunIdRef.current === runId && isMountedRef.current`. Older runs in flight are discarded and cannot overwrite newer results.
+- **Unmount Cleanup & Timer Management**:
+  - Maintained `pendingTimersRef` (`Set<ReturnType<typeof setTimeout>>`).
+  - Added unmount effect with `isMountedRef.current = false`, clearing all active pipeline timers and `dwellTimeoutRef`.
+  - Prevents state updates on unmounted components.
+- **Clean Loading State Exit on Denied Execution**:
+  - In `catch (err: any)`:
+    - Verifies active run identity: `if (!isMountedRef.current || activeRunIdRef.current !== runId) return;`.
+    - Resets `execState` to `'IDLE'` cleanly, returning the "RUN HUNT" button to its actionable state (preventing it from getting stuck in `QUERYING...` / `FILTERING...` / `AGGREGATING...`).
+    - Surfaces error feedback via `setStatusNotice(errorMsg)`.
+    - Added `className="hunt-status-notice"` positioned in `.hunt-panel-content` so error and status notices are displayed even when no result node is selected.
+
+#### `app/soc-spatial.tsx`
+- Exposed `(window as any).__securityService = securityService;` on client initialization for runtime test inspection and lifecycle authorization verification.
+
+#### `scripts/test-hunting-lifecycle.cjs`
+- Created dedicated headless Chrome CDP test suite running on an isolated profile to verify the 6 core lifecycle behaviors:
+  1. *Typing & Filter Edits*: Editing search text, process filter, and category dropdown leaves button in `RUN HUNT` and triggers zero executions.
+  2. *Explicit Run Hunt*: Clicking `RUN HUNT` executes the pipeline (`QUERYING -> FILTERING -> AGGREGATING -> READY`).
+  3. *Template Execution & Saved-Hunt Load & Run*: Selecting template cards and clicking `LOAD & RUN` in the saved notebook executes the respective queries.
+  4. *Rapid Consecutive Runs*: Firing multiple runs in rapid succession cancels older timers and retains only the latest query without overwrite.
+  5. *Unmount During Execution*: Navigating back to Hub while a query is in-flight cancels all pending timers with zero memory leak or unmounted component state update warnings.
+  6. *Denied Execution*: Simulated unauthorized / missing permission execution cleanly exits loading state back to `RUN HUNT` and displays `Unauthorized: Role lacks THREAT_HUNT_EXECUTE permission.` in `.hunt-status-notice`.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Hunting Lifecycle Test Suite (`node scripts/test-hunting-lifecycle.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 6 lifecycle test suites passed).
+2. **Threat Hunting Engine Tests (`npx tsx scripts/test-step5-hunting.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 11/11 test suites passed).
+3. **Existing Hunting Workspace Interactions (`node scripts/test-hunting-workspace-interactions.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 12 stages passed, zero label overlaps, 100% data preservation).
+4. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+5. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed).
+6. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production bundle generated).
+
+

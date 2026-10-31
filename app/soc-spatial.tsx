@@ -12,6 +12,7 @@ import CaseWorkspace from './spatial/cases/CaseWorkspace';
 import EvidenceWorkspace from './spatial/evidence/EvidenceWorkspace';
 import { DetectionEngineeringWorkspace } from './spatial/detection/DetectionEngineeringWorkspace';
 import { useSecuritySpatial } from './spatial/state/use-security-spatial';
+import { securityService } from './core/security-service';
 import { cyberAudio } from './cyber-audio';
 import { performanceManager, type PerformanceMode } from './spatial/performance-mode';
 import './spatial/incident-universe/incident-universe.css';
@@ -29,6 +30,7 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any).__socNavStore = socNavStore;
+      (window as any).__securityService = securityService;
     }
     // Initialize performance mode on client after hydration
     performanceManager?.initClient?.();

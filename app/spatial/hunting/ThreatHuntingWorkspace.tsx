@@ -189,20 +189,60 @@ export default function ThreatHuntingWorkspace({
     return q;
   }, [textSearch, selectedCategory, selectedSeverity, processFilter, ipFilter, startTime, endTime, perfMode]);
 
+  // Keep latest currentQuery in a ref to decouple handleRunHunt from query state updates
+  const currentQueryRef = useRef(currentQuery);
+  currentQueryRef.current = currentQuery;
+
+  // Track active execution lifecycle: run ID, pending timers, mount status
+  const activeRunIdRef = useRef<number>(0);
+  const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const isMountedRef = useRef<boolean>(true);
+
+  const clearPendingTimers = useCallback(() => {
+    pendingTimersRef.current.forEach((id) => clearTimeout(id));
+    pendingTimersRef.current.clear();
+  }, []);
+
+  // Cancel timers on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearPendingTimers();
+      if (dwellTimeoutRef.current) {
+        clearTimeout(dwellTimeoutRef.current);
+        dwellTimeoutRef.current = null;
+      }
+    };
+  }, [clearPendingTimers]);
+
   // Execute Hunt Query Pipeline
   const handleRunHunt = useCallback(async (overrideQuery?: ThreatHuntQuery) => {
     cyberAudio.playScan();
+
+    // Cancel pending timers from older runs and advance run sequence ID
+    clearPendingTimers();
+    const runId = ++activeRunIdRef.current;
+
     setExecState('QUERYING');
 
-    const queryToRun = overrideQuery ?? currentQuery;
+    const queryToRun = overrideQuery ?? currentQueryRef.current;
 
     // Realistic non-blocking pipeline progression
-    setTimeout(async () => {
+    const timer1 = setTimeout(() => {
+      pendingTimersRef.current.delete(timer1);
+      if (!isMountedRef.current || activeRunIdRef.current !== runId) return;
       setExecState('FILTERING');
-      setTimeout(async () => {
+
+      const timer2 = setTimeout(async () => {
+        pendingTimersRef.current.delete(timer2);
+        if (!isMountedRef.current || activeRunIdRef.current !== runId) return;
         setExecState('AGGREGATING');
+
         try {
           const result = await securityService.runThreatHunt(queryToRun);
+          if (!isMountedRef.current || activeRunIdRef.current !== runId) return;
+
           setExecutionResult(result);
           if (result.results.length > 0) {
             setSelectedResult(result.results[0]);
@@ -211,13 +251,20 @@ export default function ThreatHuntingWorkspace({
           }
           setExecState('READY');
           cyberAudio.playSuccess();
-        } catch (err) {
+        } catch (err: any) {
+          if (!isMountedRef.current || activeRunIdRef.current !== runId) return;
           console.error('Threat hunt failed:', err);
           setExecState('IDLE');
+          const errorMsg = err?.message || 'Threat hunt execution denied';
+          setStatusNotice(errorMsg);
         }
       }, 100);
+
+      pendingTimersRef.current.add(timer2);
     }, 100);
-  }, [currentQuery]);
+
+    pendingTimersRef.current.add(timer1);
+  }, [clearPendingTimers]);
 
   // Run baseline on mount
   useEffect(() => {
@@ -1419,14 +1466,44 @@ export default function ThreatHuntingWorkspace({
         </header>
 
         <div className="hunt-panel-content">
+          {/* Status Notice if action occurred */}
+          {statusNotice && (
+            <div
+              className="hunt-status-notice"
+              style={{
+                background:
+                  statusNotice.toLowerCase().includes('fail') ||
+                  statusNotice.toLowerCase().includes('denied') ||
+                  statusNotice.toLowerCase().includes('unauthorized') ||
+                  statusNotice.toLowerCase().includes('lack')
+                    ? 'rgba(255, 0, 85, 0.15)'
+                    : 'rgba(61, 255, 176, 0.15)',
+                border:
+                  statusNotice.toLowerCase().includes('fail') ||
+                  statusNotice.toLowerCase().includes('denied') ||
+                  statusNotice.toLowerCase().includes('unauthorized') ||
+                  statusNotice.toLowerCase().includes('lack')
+                    ? '1px solid #ff0055'
+                    : '1px solid #3dffb0',
+                borderRadius: 4,
+                padding: 6,
+                fontSize: 10,
+                color:
+                  statusNotice.toLowerCase().includes('fail') ||
+                  statusNotice.toLowerCase().includes('denied') ||
+                  statusNotice.toLowerCase().includes('unauthorized') ||
+                  statusNotice.toLowerCase().includes('lack')
+                    ? '#ff0055'
+                    : '#3dffb0',
+                marginBottom: 10,
+              }}
+            >
+              {statusNotice}
+            </div>
+          )}
+
           {selectedResult ? (
             <>
-              {/* Status Notice if action occurred */}
-              {statusNotice && (
-                <div style={{ background: 'rgba(61, 255, 176, 0.15)', border: '1px solid #3dffb0', borderRadius: 4, padding: 6, fontSize: 10, color: '#3dffb0', marginBottom: 10 }}>
-                  {statusNotice}
-                </div>
-              )}
 
               {/* ─── ENTITY PIVOT BAR: Extract & Dwell on Entities ─── */}
               {extractedEntities.length > 0 && (
