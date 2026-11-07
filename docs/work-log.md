@@ -1872,6 +1872,78 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 7. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
 
+---
+
+## Batch 3: Evidence Hashing & Cryptographic Engine Hardening
+
+### 1. Task Objective & Prompt
+- **User Request**: Batch 3 — Evidence hashing.
+  - Inspect `evidence-crypto.ts` and its callers.
+  - Remove the browser-incompatible `node:crypto` fallback.
+  - Use Web Crypto where available and return a clear unsupported-context error otherwise; never substitute a fake hash.
+  - Validate supported payload formats. Reject malformed objects rather than silently coercing values into bytes.
+  - Preserve supported persisted formats, existing hashes, custody records, and UI styling. Do not reseed or rewrite evidence.
+  - Test known SHA-256 vectors, supported payloads, malformed inputs, unavailable Web Crypto, and existing integrity persistence using isolated storage.
+  - Run evidence tests, TypeScript, and both builds. Document actual results, commit only this batch, push, and stop. Return all three full commit links and any unresolved findings.
+
+---
+
+### 2. Code Changes
+
+#### `app/core/security/evidence-crypto.ts`
+- **Removed `node:crypto` Dynamic Import**:
+  - Completely eliminated the Node-specific `node:crypto` fallback (`await import('node:crypto')`), eliminating bundler warnings (`Module "node:crypto" has been externalized for browser compatibility`) and ensuring 100% browser environment compliance.
+- **Strict Web Crypto Enforcement with Clear Unsupported-Context Error**:
+  - Implemented `getSubtleCrypto(): SubtleCrypto` which accesses `globalThis.crypto.subtle`.
+  - When Web Crypto is unavailable (e.g. non-secure HTTP contexts or legacy webviews), throws:
+    `Unsupported context: Web Crypto API (crypto.subtle) is not available. A secure context (HTTPS or localhost) is required for cryptographic hashing.`
+  - Strictly prevents fallback to dummy or fake hashes.
+- **Strict Payload Validation & Rejection of Malformed Objects**:
+  - Implemented strict input checking in `toArrayBuffer`:
+    1. Validates native `ArrayBuffer` directly.
+    2. Validates `ArrayBufferView` (`Uint8Array`, `Int8Array`, `DataView`, etc.), correctly copying sliced views using `byteOffset` and `byteLength`.
+    3. Validates raw byte arrays (`number[]`) by verifying every element is an integer in `[0, 255]`; rejects arrays containing strings, floats, negative numbers, or out-of-range values.
+    4. Validates serialized Buffer objects (`{ type: 'Buffer', data: number[] }`) and storage blob wrappers (`{ data: ArrayBuffer | ArrayBufferView | number[] }`).
+    5. Rejects arbitrary malformed objects (e.g. `{ foo: 'bar' }`, `{}`) with a descriptive `TypeError` rather than silently coercing properties to arbitrary bytes via `Object.values()`.
+    6. Rejects primitive strings passed to `computeSha256`, directing callers to `computeStringSha256`.
+    7. Rejects null, undefined, numbers, and booleans with explicit `TypeError` messages.
+  - Implemented strict string validation in `computeStringSha256(text: string)`, rejecting non-strings with a descriptive `TypeError`.
+- **Preserved Existing Storage Formats & Hashes**:
+  - Preserved all existing persisted hashes (empty input `e3b0c44...`, seed text `20f576...`, hunt reference `7f83b1...`).
+  - Zero reseeding or rewriting of evidence.
+
+#### `scripts/test-evidence-hashing.ts`
+- Created dedicated comprehensive test suite:
+  1. **Known SHA-256 Vectors**: Verified empty string/buffer (`e3b0c44...`), single-block `"abc"` (`ba7816...`), multi-block string (`248d6a...`), NIST `"The quick brown fox..."` (`d7a8fb...`), seed text note payload (`20f576...`), and custom verification payload (`8e2354...`).
+  2. **Supported Payload Formats**: Verified `ArrayBuffer`, `Uint8Array`, sliced views with offset, byte arrays, serialized Buffers, and storage blob wrappers all yield identical matching SHA-256 digests.
+  3. **Malformed Inputs Rejection**: Verified `null`, `undefined`, numbers, booleans, strings in `computeSha256`, non-strings in `computeStringSha256`, arbitrary objects (`{ foo: "bar" }`, `{}`), and non-byte arrays throw `TypeError`.
+  4. **Unavailable Web Crypto Context**: Verified that removing `globalThis.crypto.subtle` or `globalThis.crypto` causes `getSubtleCrypto()`, `computeSha256()`, and `computeStringSha256()` to throw the clear unsupported-context error, and restores crypto safely in `finally`.
+  5. **Isolated Storage & Integrity Persistence**: Verified baseline seeded evidence in isolated in-memory storage, text note verification, new binary file collection via Web Crypto, tampering detection without overwriting stored hashes, and chain of custody `INTEGRITY_VERIFIED` event logging.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Evidence Hashing Verification Suite (`npx tsx scripts/test-evidence-hashing.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 38 assertions passed).
+2. **Step 7 Offline Evidence Management Suite (`npx tsx scripts/test-step7-evidence.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 11/11 test suites passed).
+3. **Keyboard Behavior Suite (`npx tsx scripts/test-keyboard-behavior.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 34 assertions passed).
+4. **SOC Central Navigation Suite (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 7/7 suites passed).
+5. **Incident Selection Navigation Suite (`npx tsx scripts/test-incident-selection-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 4/4 suites passed).
+6. **Cases & Detection Authorization Suite (`npx tsx scripts/test-cases-detection-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all suites passed).
+7. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+8. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly with 0 `node:crypto` warnings).
+9. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite build completed cleanly).
+
+
 
 
 
@@ -2240,4 +2312,76 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
    - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
 7. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
+---
+
+## Batch 3: Evidence Hashing & Cryptographic Engine Hardening
+
+### 1. Task Objective & Prompt
+- **User Request**: Batch 3 — Evidence hashing.
+  - Inspect `evidence-crypto.ts` and its callers.
+  - Remove the browser-incompatible `node:crypto` fallback.
+  - Use Web Crypto where available and return a clear unsupported-context error otherwise; never substitute a fake hash.
+  - Validate supported payload formats. Reject malformed objects rather than silently coercing values into bytes.
+  - Preserve supported persisted formats, existing hashes, custody records, and UI styling. Do not reseed or rewrite evidence.
+  - Test known SHA-256 vectors, supported payloads, malformed inputs, unavailable Web Crypto, and existing integrity persistence using isolated storage.
+  - Run evidence tests, TypeScript, and both builds. Document actual results, commit only this batch, push, and stop. Return all three full commit links and any unresolved findings.
+
+---
+
+### 2. Code Changes
+
+#### `app/core/security/evidence-crypto.ts`
+- **Removed `node:crypto` Dynamic Import**:
+  - Completely eliminated the Node-specific `node:crypto` fallback (`await import('node:crypto')`), eliminating bundler warnings (`Module "node:crypto" has been externalized for browser compatibility`) and ensuring 100% browser environment compliance.
+- **Strict Web Crypto Enforcement with Clear Unsupported-Context Error**:
+  - Implemented `getSubtleCrypto(): SubtleCrypto` which accesses `globalThis.crypto.subtle`.
+  - When Web Crypto is unavailable (e.g. non-secure HTTP contexts or legacy webviews), throws:
+    `Unsupported context: Web Crypto API (crypto.subtle) is not available. A secure context (HTTPS or localhost) is required for cryptographic hashing.`
+  - Strictly prevents fallback to dummy or fake hashes.
+- **Strict Payload Validation & Rejection of Malformed Objects**:
+  - Implemented strict input checking in `toArrayBuffer`:
+    1. Validates native `ArrayBuffer` directly.
+    2. Validates `ArrayBufferView` (`Uint8Array`, `Int8Array`, `DataView`, etc.), correctly copying sliced views using `byteOffset` and `byteLength`.
+    3. Validates raw byte arrays (`number[]`) by verifying every element is an integer in `[0, 255]`; rejects arrays containing strings, floats, negative numbers, or out-of-range values.
+    4. Validates serialized Buffer objects (`{ type: 'Buffer', data: number[] }`) and storage blob wrappers (`{ data: ArrayBuffer | ArrayBufferView | number[] }`).
+    5. Rejects arbitrary malformed objects (e.g. `{ foo: 'bar' }`, `{}`) with a descriptive `TypeError` rather than silently coercing properties to arbitrary bytes via `Object.values()`.
+    6. Rejects primitive strings passed to `computeSha256`, directing callers to `computeStringSha256`.
+    7. Rejects null, undefined, numbers, and booleans with explicit `TypeError` messages.
+  - Implemented strict string validation in `computeStringSha256(text: string)`, rejecting non-strings with a descriptive `TypeError`.
+- **Preserved Existing Storage Formats & Hashes**:
+  - Preserved all existing persisted hashes (empty input `e3b0c44...`, seed text `20f576...`, hunt reference `7f83b1...`).
+  - Zero reseeding or rewriting of evidence.
+
+#### `scripts/test-evidence-hashing.ts`
+- Created dedicated comprehensive test suite:
+  1. **Known SHA-256 Vectors**: Verified empty string/buffer (`e3b0c44...`), single-block `"abc"` (`ba7816...`), multi-block string (`248d6a...`), NIST `"The quick brown fox..."` (`d7a8fb...`), seed text note payload (`20f576...`), and custom verification payload (`8e2354...`).
+  2. **Supported Payload Formats**: Verified `ArrayBuffer`, `Uint8Array`, sliced views with offset, byte arrays, serialized Buffers, and storage blob wrappers all yield identical matching SHA-256 digests.
+  3. **Malformed Inputs Rejection**: Verified `null`, `undefined`, numbers, booleans, strings in `computeSha256`, non-strings in `computeStringSha256`, arbitrary objects (`{ foo: "bar" }`, `{}`), and non-byte arrays throw `TypeError`.
+  4. **Unavailable Web Crypto Context**: Verified that removing `globalThis.crypto.subtle` or `globalThis.crypto` causes `getSubtleCrypto()`, `computeSha256()`, and `computeStringSha256()` to throw the clear unsupported-context error, and restores crypto safely in `finally`.
+  5. **Isolated Storage & Integrity Persistence**: Verified baseline seeded evidence in isolated in-memory storage, text note verification, new binary file collection via Web Crypto, tampering detection without overwriting stored hashes, and chain of custody `INTEGRITY_VERIFIED` event logging.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Evidence Hashing Verification Suite (`npx tsx scripts/test-evidence-hashing.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 38 assertions passed).
+2. **Step 7 Offline Evidence Management Suite (`npx tsx scripts/test-step7-evidence.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 11/11 test suites passed).
+3. **Keyboard Behavior Suite (`npx tsx scripts/test-keyboard-behavior.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 34 assertions passed).
+4. **SOC Central Navigation Suite (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 7/7 suites passed).
+5. **Incident Selection Navigation Suite (`npx tsx scripts/test-incident-selection-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 4/4 suites passed).
+6. **Cases & Detection Authorization Suite (`npx tsx scripts/test-cases-detection-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all suites passed).
+7. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+8. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly with 0 `node:crypto` warnings).
+9. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite build completed cleanly).
+
 
