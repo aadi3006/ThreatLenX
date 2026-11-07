@@ -19,6 +19,7 @@
  */
 
 import { LocalProvider } from '../app/core/providers/local-provider';
+import { authenticate, logout } from '../app/core/auth/local-auth-service';
 import { validateRule } from '../app/core/security/rule-validator';
 import {
   simulateRule,
@@ -237,6 +238,7 @@ async function runStep9Verification() {
 
   // ─── [4/12] Side-Effect Free Simulation Testing ───────────────────────────
   console.log('\n[4/12] Side-Effect Free Simulation Testing');
+  authenticate({ username: 'analyst.1', roleOverride: 'L2_ANALYST' });
   const initialAlerts = await provider.getAlerts();
   const simResult = await provider.testDetectionRule(procRule!, { sampleLimit: 200 }, 'analyst.1', 'L2_ANALYST');
 
@@ -264,6 +266,7 @@ async function runStep9Verification() {
 
   // ─── [6/12] Rule Creation & Draft Lifecycle ───────────────────────────────
   console.log('\n[6/12] Rule Creation & Draft Lifecycle');
+  authenticate({ username: 'sarah.chen', roleOverride: 'SOC_MANAGER' });
   const draftInput: CreateDetectionRuleInput = {
     name: 'Suspicious Reconnaissance Discovery',
     description: 'Detects network discovery utilities execution',
@@ -359,6 +362,7 @@ async function runStep9Verification() {
 
   // ─── [11/12] RBAC Authorization Enforcement ───────────────────────────────
   console.log('\n[11/12] RBAC Authorization Enforcement');
+  authenticate({ username: 'l1.analyst', roleOverride: 'L1_ANALYST' });
   let deniedAuthor = false;
   try {
     await provider.createDetectionRuleDraft(draftInput, 'l1.analyst', 'L1_ANALYST');

@@ -878,11 +878,21 @@ export class LocalProvider implements ISecurityProvider {
 
   async createDetectionRuleDraft(
     input: CreateDetectionRuleInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<DetectionRule> {
-    if (!canAuthorDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot author detection rules`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canAuthorDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot author detection rules`);
     }
 
     const now = new Date().toISOString();
@@ -907,8 +917,8 @@ export class LocalProvider implements ISecurityProvider {
       mitreTechniqueIds: input.mitreTechniqueIds,
       mitreTactic: input.mitreTactic,
       tags: input.tags ?? [],
-      author: actor,
-      authorId: actor,
+      author: effectiveActor,
+      authorId: effectiveActor,
       versionStatus: 'ACTIVE',
       changeDescription: input.changeDescription || 'Initial draft creation',
       createdAt: now,
@@ -919,8 +929,8 @@ export class LocalProvider implements ISecurityProvider {
     await put<DetectionRule>('detection_rules', newRule);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_CREATED',
       target: newRule.id,
       previousState: undefined,
@@ -944,11 +954,21 @@ export class LocalProvider implements ISecurityProvider {
   async updateDetectionRuleDraft(
     id: string,
     patch: UpdateDetectionRuleInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<DetectionRule> {
-    if (!canAuthorDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot edit detection rules`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canAuthorDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot edit detection rules`);
     }
 
     const ruleIndex = this._detectionRules.findIndex((r) => r.id === id || r.ruleId === id);
@@ -987,8 +1007,8 @@ export class LocalProvider implements ISecurityProvider {
     await put<DetectionRule>('detection_rules', rule);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_EDITED',
       target: rule.id,
       previousState: prevStatus,
@@ -1035,11 +1055,21 @@ export class LocalProvider implements ISecurityProvider {
   async testDetectionRule(
     ruleIdOrRule: string | DetectionRule,
     options?: TestRunOptions,
-    actor: string = 'ANALYST',
-    actorRole: RoleId = 'L2_ANALYST'
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<DetectionTestRunResult> {
-    if (!canTestDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot test detection rules`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canTestDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot test detection rules`);
     }
 
     let rule: DetectionRule;
@@ -1070,8 +1100,8 @@ export class LocalProvider implements ISecurityProvider {
 
     // Log test execution audit
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_TEST_EXECUTED',
       target: rule.ruleId ?? rule.id,
       previousState: undefined,
@@ -1095,11 +1125,21 @@ export class LocalProvider implements ISecurityProvider {
   async publishDetectionRule(
     id: string,
     changeDescription: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<DetectionRule> {
-    if (!canManageDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" does not have authority to publish detection rules`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canManageDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" does not have authority to publish detection rules`);
     }
 
     const ruleIndex = this._detectionRules.findIndex((r) => r.id === id || r.ruleId === id);
@@ -1126,8 +1166,8 @@ export class LocalProvider implements ISecurityProvider {
       ruleId: rule.ruleId ?? rule.id,
       version: versionNum,
       rule: clone(rule),
-      author: actor,
-      authorId: actor,
+      author: effectiveActor,
+      authorId: effectiveActor,
       changeDescription: changeDescription || rule.changeDescription || `Version ${versionNum} published`,
       publishedAt: now,
       createdAt: rule.createdAt,
@@ -1149,8 +1189,8 @@ export class LocalProvider implements ISecurityProvider {
     await put<DetectionRule>('detection_rules', rule);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_PUBLISHED',
       target: rule.id,
       previousState: 'TESTING',
@@ -1169,9 +1209,19 @@ export class LocalProvider implements ISecurityProvider {
     return clone(rule);
   }
 
-  async enableDetectionRule(id: string, actor: string, actorRole: RoleId): Promise<DetectionRule> {
-    if (!canManageDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot enable detection rules`);
+  async enableDetectionRule(id: string, actor?: string, actorRole?: RoleId): Promise<DetectionRule> {
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canManageDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot enable detection rules`);
     }
 
     const ruleIndex = this._detectionRules.findIndex((r) => r.id === id || r.ruleId === id);
@@ -1197,8 +1247,8 @@ export class LocalProvider implements ISecurityProvider {
     await put<DetectionRule>('detection_rules', rule);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_ENABLED',
       target: rule.id,
       previousState: prevStatus,
@@ -1213,9 +1263,19 @@ export class LocalProvider implements ISecurityProvider {
     return clone(rule);
   }
 
-  async disableDetectionRule(id: string, actor: string, actorRole: RoleId): Promise<DetectionRule> {
-    if (!canManageDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot disable detection rules`);
+  async disableDetectionRule(id: string, actor?: string, actorRole?: RoleId): Promise<DetectionRule> {
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canManageDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot disable detection rules`);
     }
 
     const ruleIndex = this._detectionRules.findIndex((r) => r.id === id || r.ruleId === id);
@@ -1234,8 +1294,8 @@ export class LocalProvider implements ISecurityProvider {
     await put<DetectionRule>('detection_rules', rule);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_DISABLED',
       target: rule.id,
       previousState: prevStatus,
@@ -1250,9 +1310,19 @@ export class LocalProvider implements ISecurityProvider {
     return clone(rule);
   }
 
-  async deprecateDetectionRule(id: string, actor: string, actorRole: RoleId): Promise<DetectionRule> {
-    if (!canManageDetectionRules(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot deprecate detection rules`);
+  async deprecateDetectionRule(id: string, actor?: string, actorRole?: RoleId): Promise<DetectionRule> {
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canManageDetectionRules(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot deprecate detection rules`);
     }
 
     const ruleIndex = this._detectionRules.findIndex((r) => r.id === id || r.ruleId === id);
@@ -1272,8 +1342,8 @@ export class LocalProvider implements ISecurityProvider {
     await put<DetectionRule>('detection_rules', rule);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'RULE_DEPRECATED',
       target: rule.id,
       previousState: prevStatus,
@@ -3001,11 +3071,21 @@ export class LocalProvider implements ISecurityProvider {
 
   async createCase(
     input: CreateCaseInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canCreateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot create cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canCreateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot create cases`);
     }
 
     const caseNumber = await getNextCaseNumber();
@@ -3021,9 +3101,9 @@ export class LocalProvider implements ISecurityProvider {
       severity: input.severity ?? 'MEDIUM',
       createdAt: now,
       updatedAt: now,
-      createdBy: actor,
+      createdBy: effectiveActor,
       ownerId: input.ownerId,
-      participantIds: [actor, ...(input.ownerId && input.ownerId !== actor ? [input.ownerId] : [])],
+      participantIds: [effectiveActor, ...(input.ownerId && input.ownerId !== effectiveActor ? [input.ownerId] : [])],
       incidentIds: input.incidentIds ? [...input.incidentIds] : [],
       huntIds: input.huntIds ? [...input.huntIds] : [],
       alertIds: input.alertIds ? [...input.alertIds] : [],
@@ -3050,12 +3130,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', newCase);
 
     const auditEntry = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_CREATED',
       target: newCase.id,
       resultingState: newCase.status,
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: {
         caseNumber: newCase.caseNumber,
@@ -3073,29 +3153,39 @@ export class LocalProvider implements ISecurityProvider {
   async updateCase(
     id: string,
     patch: UpdateCaseInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot update cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot update cases`);
     }
 
     const c = this._cases.find((item) => item.id === id || item.caseNumber === id);
     if (!c) throw new Error(`Case "${id}" not found`);
 
     if (patch.priority && patch.priority !== c.priority) {
-      if (!canManageCase(actorRole) && actorRole !== 'L2_ANALYST') {
-        throw new Error(`Unauthorized: Role "${actorRole}" cannot change case priority`);
+      if (!canManageCase(role) && role !== 'L2_ANALYST') {
+        throw new Error(`Unauthorized: Role "${role}" cannot change case priority`);
       }
       const prevPriority = c.priority;
       c.priority = patch.priority;
       const audit = this._buildAudit({
-        actor,
-        actorRole,
+        actor: effectiveActor,
+        actorRole: role,
         action: 'CASE_PRIORITY_CHANGED',
         target: c.id,
         resultingState: c.priority,
-        authorization: actorRole,
+        authorization: role,
         outcome: 'SUCCESS',
         details: { from: prevPriority, to: c.priority },
       });
@@ -3104,8 +3194,8 @@ export class LocalProvider implements ISecurityProvider {
     }
 
     if (patch.ownerId !== undefined && patch.ownerId !== c.ownerId) {
-      if (!canManageCase(actorRole)) {
-        throw new Error(`Unauthorized: Role "${actorRole}" cannot assign or reassign cases`);
+      if (!canManageCase(role)) {
+        throw new Error(`Unauthorized: Role "${role}" cannot assign or reassign cases`);
       }
       const prevOwner = c.ownerId;
       c.ownerId = patch.ownerId;
@@ -3113,12 +3203,12 @@ export class LocalProvider implements ISecurityProvider {
         c.participantIds = [...(c.participantIds ?? []), c.ownerId];
       }
       const audit = this._buildAudit({
-        actor,
-        actorRole,
+        actor: effectiveActor,
+        actorRole: role,
         action: prevOwner ? 'CASE_REASSIGNED' : 'CASE_ASSIGNED',
         target: c.id,
         resultingState: c.ownerId ?? 'UNASSIGNED',
-        authorization: actorRole,
+        authorization: role,
         outcome: 'SUCCESS',
         details: { from: prevOwner, to: c.ownerId },
       });
@@ -3130,8 +3220,8 @@ export class LocalProvider implements ISecurityProvider {
       if (!isValidCaseStatusTransition(c.status, patch.status)) {
         throw new Error(`Invalid status transition from "${c.status}" to "${patch.status}"`);
       }
-      if (['RESOLVED', 'CLOSED'].includes(patch.status) && !canManageCase(actorRole) && actorRole !== 'L2_ANALYST' && actorRole !== 'INCIDENT_RESPONDER') {
-        throw new Error(`Unauthorized: Role "${actorRole}" cannot resolve or close cases`);
+      if (['RESOLVED', 'CLOSED'].includes(patch.status) && !canManageCase(role) && role !== 'L2_ANALYST' && role !== 'INCIDENT_RESPONDER') {
+        throw new Error(`Unauthorized: Role "${role}" cannot resolve or close cases`);
       }
       const prevStatus = c.status;
       c.status = patch.status;
@@ -3149,12 +3239,12 @@ export class LocalProvider implements ISecurityProvider {
       else if (prevStatus === 'CLOSED') auditAction = 'CASE_REOPENED';
 
       const audit = this._buildAudit({
-        actor,
-        actorRole,
+        actor: effectiveActor,
+        actorRole: role,
         action: auditAction,
         target: c.id,
         resultingState: c.status,
-        authorization: actorRole,
+        authorization: role,
         outcome: 'SUCCESS',
         details: { from: prevStatus, to: c.status, resolution: patch.resolution, closureReason: patch.closureReason },
       });
@@ -3180,11 +3270,21 @@ export class LocalProvider implements ISecurityProvider {
   async closeCase(
     id: string,
     closureReason: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canManageCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot close cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canManageCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot close cases`);
     }
     const c = this._cases.find((item) => item.id === id || item.caseNumber === id);
     if (!c) throw new Error(`Case "${id}" not found`);
@@ -3198,12 +3298,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_CLOSED',
       target: c.id,
       resultingState: 'CLOSED',
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { from: prevStatus, closureReason },
     });
@@ -3216,11 +3316,21 @@ export class LocalProvider implements ISecurityProvider {
   async reopenCase(
     id: string,
     reason: string | undefined,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canManageCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot reopen cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canManageCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot reopen cases`);
     }
     const c = this._cases.find((item) => item.id === id || item.caseNumber === id);
     if (!c) throw new Error(`Case "${id}" not found`);
@@ -3237,12 +3347,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_REOPENED',
       target: c.id,
       resultingState: 'IN_PROGRESS',
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { from: prevStatus, reason: reason ?? 'Explicit reopen workflow' },
     });
@@ -3263,11 +3373,21 @@ export class LocalProvider implements ISecurityProvider {
   async addCaseNote(
     caseId: string,
     input: CreateCaseNoteInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<CaseNote> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot add case notes`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot add case notes`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3276,8 +3396,8 @@ export class LocalProvider implements ISecurityProvider {
     const note: CaseNote = {
       id: `note-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       caseId: c.id,
-      authorId: input.authorId ?? actor,
-      authorName: input.authorName ?? actor,
+      authorId: input.authorId ?? effectiveActor,
+      authorName: input.authorName ?? effectiveActor,
       createdAt: now,
       updatedAt: now,
       content: input.content,
@@ -3290,12 +3410,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_NOTE_ADDED',
       target: c.id,
       resultingState: 'NOTE_RECORDED',
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { noteId: note.id, preview: note.content.slice(0, 80) },
     });
@@ -3309,13 +3429,27 @@ export class LocalProvider implements ISecurityProvider {
     caseId: string,
     noteId: string,
     input: UpdateCaseNoteInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<CaseNote> {
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot update case notes`);
+    }
+
     const note = this._caseNotes.find((n) => n.id === noteId && n.caseId === caseId);
     if (!note) throw new Error(`Case note "${noteId}" not found`);
 
-    if (note.authorId !== actor && !canManageCase(actorRole)) {
+    if (note.authorId !== effectiveActor && !canManageCase(role)) {
       throw new Error(`Unauthorized: Only note author or manager may edit notes`);
     }
 
@@ -3327,12 +3461,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<CaseNote>('case_notes', note);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_NOTE_UPDATED',
       target: caseId,
       resultingState: 'NOTE_MODIFIED',
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { noteId, prevLength: prevContent.length, newLength: note.content.length },
     });
@@ -3353,11 +3487,21 @@ export class LocalProvider implements ISecurityProvider {
   async addCaseTask(
     caseId: string,
     input: CreateCaseTaskInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<CaseTask> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot create case tasks`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot create case tasks`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3371,7 +3515,7 @@ export class LocalProvider implements ISecurityProvider {
       status: 'TODO',
       priority: input.priority ?? c.priority,
       assigneeId: input.assigneeId,
-      createdBy: actor,
+      createdBy: effectiveActor,
       createdAt: now,
       updatedAt: now,
       dueAt: input.dueAt,
@@ -3384,12 +3528,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_TASK_ADDED',
       target: c.id,
       resultingState: task.status,
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { taskId: task.id, title: task.title, priority: task.priority },
     });
@@ -3403,11 +3547,21 @@ export class LocalProvider implements ISecurityProvider {
     caseId: string,
     taskId: string,
     patch: Partial<CaseTask>,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<CaseTask> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot update case tasks`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot update case tasks`);
     }
     const task = this._caseTasks.find((t) => t.id === taskId && t.caseId === caseId);
     if (!task) throw new Error(`Task "${taskId}" not found`);
@@ -3438,12 +3592,12 @@ export class LocalProvider implements ISecurityProvider {
     }
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_TASK_UPDATED',
       target: caseId,
       resultingState: task.status,
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { taskId: task.id, title: task.title, status: task.status },
     });
@@ -3464,11 +3618,21 @@ export class LocalProvider implements ISecurityProvider {
   async addCaseFinding(
     caseId: string,
     input: CreateCaseFindingInput,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<CaseFinding> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot add case findings`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot add case findings`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3480,7 +3644,7 @@ export class LocalProvider implements ISecurityProvider {
       title: input.title,
       description: input.description,
       severity: input.severity ?? c.severity,
-      authorId: actor,
+      authorId: effectiveActor,
       createdAt: now,
       updatedAt: now,
       relatedEventIds: input.relatedEventIds ? [...input.relatedEventIds] : [],
@@ -3501,12 +3665,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_FINDING_ADDED',
       target: c.id,
       resultingState: 'FINDING_DOCUMENTED',
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { findingId: finding.id, title: finding.title, severity: finding.severity },
     });
@@ -3520,11 +3684,21 @@ export class LocalProvider implements ISecurityProvider {
     caseId: string,
     findingId: string,
     patch: Partial<CaseFinding>,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<CaseFinding> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot update findings`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot update findings`);
     }
     const finding = this._caseFindings.find((f) => f.id === findingId && f.caseId === caseId);
     if (!finding) throw new Error(`Finding "${findingId}" not found`);
@@ -3541,12 +3715,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<CaseFinding>('case_findings', finding);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_FINDING_UPDATED',
       target: caseId,
       resultingState: 'FINDING_UPDATED',
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { findingId, title: finding.title },
     });
@@ -3559,11 +3733,21 @@ export class LocalProvider implements ISecurityProvider {
   async linkIncidentToCase(
     caseId: string,
     incidentId: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot link incidents to cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot link incidents to cases`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3582,12 +3766,12 @@ export class LocalProvider implements ISecurityProvider {
       await put<Case>('cases', c);
 
       const audit = this._buildAudit({
-        actor,
-        actorRole,
+        actor: effectiveActor,
+        actorRole: role,
         action: 'CASE_INCIDENT_LINKED',
         target: c.id,
         resultingState: c.status,
-        authorization: actorRole,
+        authorization: role,
         outcome: 'SUCCESS',
         details: { incidentId: inc.id, incidentTitle: inc.title },
       });
@@ -3601,11 +3785,21 @@ export class LocalProvider implements ISecurityProvider {
   async unlinkIncidentFromCase(
     caseId: string,
     incidentId: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot unlink incidents from cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot unlink incidents from cases`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3615,12 +3809,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_INCIDENT_UNLINKED',
       target: c.id,
       resultingState: c.status,
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { incidentId },
     });
@@ -3633,11 +3827,21 @@ export class LocalProvider implements ISecurityProvider {
   async linkHuntToCase(
     caseId: string,
     huntId: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot link threat hunts to cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot link threat hunts to cases`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3653,12 +3857,12 @@ export class LocalProvider implements ISecurityProvider {
       await put<Case>('cases', c);
 
       const audit = this._buildAudit({
-        actor,
-        actorRole,
+        actor: effectiveActor,
+        actorRole: role,
         action: 'CASE_HUNT_LINKED',
         target: c.id,
         resultingState: c.status,
-        authorization: actorRole,
+        authorization: role,
         outcome: 'SUCCESS',
         details: { huntId: hunt.id, huntName: hunt.name },
       });
@@ -3672,11 +3876,21 @@ export class LocalProvider implements ISecurityProvider {
   async unlinkHuntFromCase(
     caseId: string,
     huntId: string,
-    actor: string,
-    actorRole: RoleId
+    actor?: string,
+    actorRole?: RoleId
   ): Promise<Case> {
-    if (!canUpdateCase(actorRole)) {
-      throw new Error(`Unauthorized: Role "${actorRole}" cannot unlink threat hunts from cases`);
+    const session = this.getCurrentSession();
+    if (!session) {
+      throw new Error('Unauthorized: Operation requires an active session.');
+    }
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const effectiveActor = session.username;
+
+    if (!canUpdateCase(role)) {
+      throw new Error(`Unauthorized: Role "${role}" cannot unlink threat hunts from cases`);
     }
     const c = this._cases.find((item) => item.id === caseId || item.caseNumber === caseId);
     if (!c) throw new Error(`Case "${caseId}" not found`);
@@ -3686,12 +3900,12 @@ export class LocalProvider implements ISecurityProvider {
     await put<Case>('cases', c);
 
     const audit = this._buildAudit({
-      actor,
-      actorRole,
+      actor: effectiveActor,
+      actorRole: role,
       action: 'CASE_HUNT_UNLINKED',
       target: c.id,
       resultingState: c.status,
-      authorization: actorRole,
+      authorization: role,
       outcome: 'SUCCESS',
       details: { huntId },
     });

@@ -23,6 +23,7 @@ import {
   canUpdateCase,
   canManageCase,
 } from '../app/core/auth/rbac';
+import { authenticate, logout } from '../app/core/auth/local-auth-service';
 import { LocalProvider } from '../app/core/providers/local-provider';
 import { SecurityService } from '../app/core/security-service';
 
@@ -205,6 +206,7 @@ async function runStep6Tests() {
   // ─── SUITE 4: DETERMINISTIC SEQUENTIAL NUMBERING ──────────────────
   console.log('\n--- SUITE 4: Deterministic Sequential Numbering ---');
 
+  authenticate({ username: 'hunter', roleOverride: 'THREAT_HUNTER' });
   const case2 = await provider.createCase(
     {
       title: 'Investigation into Financial Subnet Anomalies',
@@ -217,6 +219,7 @@ async function runStep6Tests() {
   );
   assert(case2.caseNumber === 'CASE-000002', `Generated sequential case number: ${case2.caseNumber}`);
 
+  authenticate({ username: 'analyst1', roleOverride: 'L1_ANALYST' });
   const case3 = await provider.createCase(
     {
       title: 'Executive Phishing Wave Q3',
@@ -235,6 +238,7 @@ async function runStep6Tests() {
   assert(case2.status === 'OPEN', 'Newly created case starts in OPEN state');
 
   // Transition OPEN -> IN_PROGRESS
+  authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
   const inProgCase = await provider.updateCase(
     case2.id,
     { status: 'IN_PROGRESS' },
@@ -262,6 +266,7 @@ async function runStep6Tests() {
   assert(resumedCase.status === 'IN_PROGRESS', 'Case resumed to IN_PROGRESS');
 
   // Transition IN_PROGRESS -> RESOLVED
+  authenticate({ username: 'manager', roleOverride: 'SOC_MANAGER' });
   const resolvedCase = await provider.updateCase(
     case2.id,
     { status: 'RESOLVED', resolution: 'Phishing infrastructure dismantled.' },
@@ -283,6 +288,7 @@ async function runStep6Tests() {
   assert(closedCase.closureReason !== undefined, 'Closure reason recorded');
 
   // Reject direct mutation from CLOSED to IN_PROGRESS
+  authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
   let rejected = false;
   try {
     await provider.updateCase(case2.id, { status: 'IN_PROGRESS' }, 'analyst2', 'L2_ANALYST');
@@ -292,6 +298,7 @@ async function runStep6Tests() {
   assert(rejected, 'Direct transition from CLOSED to IN_PROGRESS correctly rejected');
 
   // Explicit reopen workflow
+  authenticate({ username: 'manager', roleOverride: 'SOC_MANAGER' });
   const reopenedCase = await provider.reopenCase(
     case2.id,
     'New outbound beacons detected from same subnet.',
@@ -305,6 +312,7 @@ async function runStep6Tests() {
   console.log('\n--- SUITE 6: Ownership & Reassignment ---');
 
   // Analyst attempts to reassign (should be rejected for L1_ANALYST)
+  authenticate({ username: 'analyst1', roleOverride: 'L1_ANALYST' });
   let reassignRejected = false;
   try {
     await provider.updateCase(case3.id, { ownerId: 'responder' }, 'analyst1', 'L1_ANALYST');
@@ -314,6 +322,7 @@ async function runStep6Tests() {
   assert(reassignRejected, 'L1 Analyst prohibited from reassigning case ownership');
 
   // Manager reassigns case
+  authenticate({ username: 'manager', roleOverride: 'SOC_MANAGER' });
   const assignedCase = await provider.updateCase(case3.id, { ownerId: 'responder' }, 'manager', 'SOC_MANAGER');
   assert(assignedCase.ownerId === 'responder', 'Manager successfully assigned case to responder');
   assert(Boolean(assignedCase.participantIds?.includes('responder')), 'Assignee added to participant list');
@@ -322,6 +331,7 @@ async function runStep6Tests() {
   console.log('\n--- SUITE 7: Case Notes, Tasks & Findings ---');
 
   // Add Note
+  authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
   const newNote = await provider.addCaseNote(
     case3.id,
     { content: 'Observed phishing landing page hosted on external VPS.' },
@@ -352,6 +362,7 @@ async function runStep6Tests() {
   assert(newTask.status === 'TODO', 'Task created in TODO status');
 
   // Complete Task
+  authenticate({ username: 'responder', roleOverride: 'INCIDENT_RESPONDER' });
   const completedTask = await provider.updateCaseTask(
     case3.id,
     newTask.id,
@@ -363,6 +374,7 @@ async function runStep6Tests() {
   assert(completedTask.completedAt !== undefined, 'Task completion timestamp recorded');
 
   // Add Finding with Provenance
+  authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
   const newFinding = await provider.addCaseFinding(
     case3.id,
     {
@@ -390,6 +402,7 @@ async function runStep6Tests() {
   console.log('\n--- SUITE 8: Incident & Threat Hunt Linking ---');
 
   // Link Incident
+  authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
   const linkedCase = await provider.linkIncidentToCase(case2.id, 'incident-001', 'analyst2', 'L2_ANALYST');
   assert(linkedCase.incidentIds.includes('incident-001'), 'Incident linked to case');
   assert(linkedCase.assetIds.length > 0, 'Affected assets synchronized from linked incident');
@@ -399,6 +412,7 @@ async function runStep6Tests() {
   assert(!unlinkedCase.incidentIds.includes('incident-001'), 'Incident successfully unlinked');
 
   // Link Threat Hunt
+  authenticate({ username: 'hunter', roleOverride: 'THREAT_HUNTER' });
   const huntLinkedCase = await provider.linkHuntToCase(case2.id, 'hunt-seed-001', 'hunter', 'THREAT_HUNTER');
   assert(huntLinkedCase.huntIds.includes('hunt-seed-001'), 'Threat hunt linked to case');
 

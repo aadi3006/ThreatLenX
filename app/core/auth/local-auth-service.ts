@@ -23,6 +23,9 @@ const LOCAL_ACCOUNTS: LocalAccount[] = [
   { username: 'sarah_nakamura', displayName: 'Sarah Nakamura', defaultRole: 'L2_ANALYST',         tenantId: 'DEMO' },
   { username: 'elena_rostova',  displayName: 'Elena Rostova',  defaultRole: 'INCIDENT_RESPONDER', tenantId: 'DEMO' },
   { username: 'marcus_vance',   displayName: 'Marcus Vance',   defaultRole: 'SOC_MANAGER',        tenantId: 'DEMO' },
+  { username: 'sarah.chen',     displayName: 'Sarah Chen',     defaultRole: 'SOC_MANAGER',        tenantId: 'DEMO' },
+  { username: 'analyst.1',      displayName: 'Analyst 1',      defaultRole: 'L2_ANALYST',         tenantId: 'DEMO' },
+  { username: 'l1.analyst',     displayName: 'L1 Analyst',     defaultRole: 'L1_ANALYST',         tenantId: 'DEMO' },
 ];
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours

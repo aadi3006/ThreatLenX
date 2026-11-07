@@ -111,8 +111,21 @@ import type {
   SocActivityTimelineItem,
   MetricProvenance,
 } from './models/metrics';
-import { canViewSocMetrics, canViewOperationalData, canExecuteThreatHunt, canRequestContainment, canApproveContainment, canExecuteSOAR } from './auth/rbac';
 import {
+  canViewSocMetrics,
+  canViewOperationalData,
+  canExecuteThreatHunt,
+  canRequestContainment,
+  canApproveContainment,
+  canExecuteSOAR,
+  canCreateCase,
+  canUpdateCase,
+  canManageCase,
+  canReadCases,
+  canAuthorDetectionRules,
+  canManageDetectionRules,
+  canTestDetectionRules,
+  canReadDetectionRules,
   canViewSimulations,
   canRunSimulation,
   canCancelSimulation,
@@ -568,6 +581,9 @@ export class SecurityService {
 
   async createDetectionRuleDraft(input: CreateDetectionRuleInput): Promise<DetectionRule> {
     const session = this._assertSession();
+    if (!canAuthorDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot author detection rules`);
+    }
     const rule = await this._requireProvider().createDetectionRuleDraft(
       input,
       session.username,
@@ -581,6 +597,9 @@ export class SecurityService {
 
   async updateDetectionRuleDraft(id: string, patch: UpdateDetectionRuleInput): Promise<DetectionRule> {
     const session = this._assertSession();
+    if (!canAuthorDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot edit detection rules`);
+    }
     const rule = await this._requireProvider().updateDetectionRuleDraft(
       id,
       patch,
@@ -602,6 +621,9 @@ export class SecurityService {
     options?: TestRunOptions
   ): Promise<DetectionTestRunResult> {
     const session = this._assertSession();
+    if (!canTestDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot test detection rules`);
+    }
     const result = await this._requireProvider().testDetectionRule(
       ruleIdOrRule,
       options,
@@ -615,6 +637,9 @@ export class SecurityService {
 
   async publishDetectionRule(id: string, changeDescription: string): Promise<DetectionRule> {
     const session = this._assertSession();
+    if (!canManageDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" does not have authority to publish detection rules`);
+    }
     const rule = await this._requireProvider().publishDetectionRule(
       id,
       changeDescription,
@@ -629,6 +654,9 @@ export class SecurityService {
 
   async enableDetectionRule(id: string): Promise<DetectionRule> {
     const session = this._assertSession();
+    if (!canManageDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot enable detection rules`);
+    }
     const rule = await this._requireProvider().enableDetectionRule(
       id,
       session.username,
@@ -641,6 +669,9 @@ export class SecurityService {
 
   async disableDetectionRule(id: string): Promise<DetectionRule> {
     const session = this._assertSession();
+    if (!canManageDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot disable detection rules`);
+    }
     const rule = await this._requireProvider().disableDetectionRule(
       id,
       session.username,
@@ -653,6 +684,9 @@ export class SecurityService {
 
   async deprecateDetectionRule(id: string): Promise<DetectionRule> {
     const session = this._assertSession();
+    if (!canManageDetectionRules(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot deprecate detection rules`);
+    }
     const rule = await this._requireProvider().deprecateDetectionRule(
       id,
       session.username,
@@ -864,6 +898,9 @@ export class SecurityService {
 
   async createCase(input: CreateCaseInput): Promise<Case> {
     const session = this._assertSession();
+    if (!canCreateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot create cases`);
+    }
     const created = await this._requireProvider().createCase(input, session.username, session.role);
     this._emit('CASE_CREATED');
     this._emit('CASES_UPDATED');
@@ -873,6 +910,9 @@ export class SecurityService {
 
   async updateCase(id: string, patch: UpdateCaseInput): Promise<Case> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot update cases`);
+    }
     const updated = await this._requireProvider().updateCase(id, patch, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -882,6 +922,9 @@ export class SecurityService {
 
   async assignCase(id: string, ownerId: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canManageCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot assign or reassign cases`);
+    }
     const updated = await this._requireProvider().updateCase(id, { ownerId }, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -891,6 +934,9 @@ export class SecurityService {
 
   async unassignCase(id: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canManageCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot assign or reassign cases`);
+    }
     const updated = await this._requireProvider().updateCase(id, { ownerId: undefined }, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -900,6 +946,9 @@ export class SecurityService {
 
   async changeCasePriority(id: string, priority: CasePriority): Promise<Case> {
     const session = this._assertSession();
+    if (!canManageCase(session.role) && session.role !== 'L2_ANALYST') {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot change case priority`);
+    }
     const updated = await this._requireProvider().updateCase(id, { priority }, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -920,6 +969,10 @@ export class SecurityService {
       throw new Error(`Invalid status transition from "${existing.status}" to "${newStatus}"`);
     }
 
+    if (['RESOLVED', 'CLOSED'].includes(newStatus) && !canManageCase(session.role) && session.role !== 'L2_ANALYST' && session.role !== 'INCIDENT_RESPONDER') {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot resolve or close cases`);
+    }
+
     const updated = await this._requireProvider().updateCase(
       id,
       { status: newStatus },
@@ -934,6 +987,9 @@ export class SecurityService {
 
   async resolveCase(id: string, resolution: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canManageCase(session.role) && session.role !== 'L2_ANALYST' && session.role !== 'INCIDENT_RESPONDER') {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot resolve or close cases`);
+    }
     const updated = await this._requireProvider().updateCase(
       id,
       { status: 'RESOLVED', resolution, resolvedAt: new Date().toISOString() },
@@ -948,6 +1004,9 @@ export class SecurityService {
 
   async closeCase(id: string, closureReason: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canManageCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot close cases`);
+    }
     const closed = await this._requireProvider().closeCase(id, closureReason, session.username, session.role);
     this._emit('CASE_CLOSED');
     this._emit('CASE_UPDATED');
@@ -958,6 +1017,9 @@ export class SecurityService {
 
   async reopenCase(id: string, reason?: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canManageCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot reopen cases`);
+    }
     const reopened = await this._requireProvider().reopenCase(id, reason, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -967,6 +1029,9 @@ export class SecurityService {
 
   async linkIncidentToCase(caseId: string, incidentId: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot link incidents to cases`);
+    }
     const updated = await this._requireProvider().linkIncidentToCase(caseId, incidentId, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -976,6 +1041,9 @@ export class SecurityService {
 
   async unlinkIncidentFromCase(caseId: string, incidentId: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot unlink incidents from cases`);
+    }
     const updated = await this._requireProvider().unlinkIncidentFromCase(caseId, incidentId, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -985,6 +1053,9 @@ export class SecurityService {
 
   async linkHuntToCase(caseId: string, huntId: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot link threat hunts to cases`);
+    }
     const updated = await this._requireProvider().linkHuntToCase(caseId, huntId, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -994,6 +1065,9 @@ export class SecurityService {
 
   async unlinkHuntFromCase(caseId: string, huntId: string): Promise<Case> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot unlink threat hunts from cases`);
+    }
     const updated = await this._requireProvider().unlinkHuntFromCase(caseId, huntId, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('CASES_UPDATED');
@@ -1007,6 +1081,9 @@ export class SecurityService {
 
   async addCaseNote(caseId: string, input: CreateCaseNoteInput): Promise<CaseNote> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot add case notes`);
+    }
     const note = await this._requireProvider().addCaseNote(caseId, input, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('AUDIT_APPENDED');
@@ -1015,6 +1092,9 @@ export class SecurityService {
 
   async updateCaseNote(caseId: string, noteId: string, input: UpdateCaseNoteInput): Promise<CaseNote> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot update case notes`);
+    }
     const note = await this._requireProvider().updateCaseNote(caseId, noteId, input, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('AUDIT_APPENDED');
@@ -1027,6 +1107,9 @@ export class SecurityService {
 
   async addCaseTask(caseId: string, input: CreateCaseTaskInput): Promise<CaseTask> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot create case tasks`);
+    }
     const task = await this._requireProvider().addCaseTask(caseId, input, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('AUDIT_APPENDED');
@@ -1035,6 +1118,9 @@ export class SecurityService {
 
   async updateCaseTask(caseId: string, taskId: string, patch: Partial<CaseTask>): Promise<CaseTask> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot update case tasks`);
+    }
     const task = await this._requireProvider().updateCaseTask(caseId, taskId, patch, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('AUDIT_APPENDED');
@@ -1047,6 +1133,9 @@ export class SecurityService {
 
   async addCaseFinding(caseId: string, input: CreateCaseFindingInput): Promise<CaseFinding> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot add case findings`);
+    }
     const finding = await this._requireProvider().addCaseFinding(caseId, input, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('AUDIT_APPENDED');
@@ -1055,6 +1144,9 @@ export class SecurityService {
 
   async updateCaseFinding(caseId: string, findingId: string, patch: Partial<CaseFinding>): Promise<CaseFinding> {
     const session = this._assertSession();
+    if (!canUpdateCase(session.role)) {
+      throw new Error(`Unauthorized: Role "${session.role}" cannot update findings`);
+    }
     const finding = await this._requireProvider().updateCaseFinding(caseId, findingId, patch, session.username, session.role);
     this._emit('CASE_UPDATED');
     this._emit('AUDIT_APPENDED');

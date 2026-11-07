@@ -343,17 +343,17 @@ export function canResolveAlert(roleId?: RoleId): boolean {
 }
 
 export function canReadDetectionRules(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'DETECTION_RULE_READ') || hasPermission(roleId, 'CONFIG_MANAGE');
 }
 
 export function canTestDetectionRules(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'DETECTION_RULE_TEST') || hasPermission(roleId, 'CONFIG_MANAGE');
 }
 
 export function canAuthorDetectionRules(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return (
     hasPermission(roleId, 'DETECTION_RULE_AUTHOR') ||
     hasPermission(roleId, 'CONFIG_MANAGE') ||
@@ -363,7 +363,7 @@ export function canAuthorDetectionRules(roleId?: RoleId): boolean {
 }
 
 export function canManageDetectionRules(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return (
     hasPermission(roleId, 'DETECTION_RULE_MANAGE') ||
     hasPermission(roleId, 'CONFIG_MANAGE') ||
@@ -393,22 +393,22 @@ export function canSaveThreatHunt(roleId?: RoleId): boolean {
 }
 
 export function canReadCases(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'CASE_READ');
 }
 
 export function canCreateCase(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'CASE_CREATE');
 }
 
 export function canUpdateCase(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'CASE_UPDATE');
 }
 
 export function canManageCase(roleId?: RoleId): boolean {
-  if (!roleId) return true;
+  if (!roleId) return false;
   return hasPermission(roleId, 'CASE_MANAGE');
 }
 

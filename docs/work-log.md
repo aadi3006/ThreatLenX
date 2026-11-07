@@ -1971,3 +1971,81 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
    - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
 6. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
+
+---
+
+## Batch 1 — Cases and Detection Authorization Hardening
+
+### 1. Task Objective & Scope
+- Inspect active mutation paths for Cases and Detection Engineering.
+- Hardened `SecurityService` and `LocalProvider` to strictly require an active authenticated session for all mutation operations.
+- Remove privileged missing-session fallbacks and default argument privileges.
+- Prevent caller-supplied role and actor spoofing by deriving authorization and audit identity strictly from the active session (`session.role`, `session.username`).
+- Enforce fail-closed permission helpers on missing/undefined roles.
+- Preserve authorized read access, UI styling, and stored data.
+- Validate missing sessions, unauthorized roles, supplied-role spoofing, and authorized success using isolated in-memory storage (asserting zero mutations on all denied paths).
+
+---
+
+### 2. Implementation Summary
+
+#### `app/core/auth/rbac.ts`
+- Converted permission helpers from fail-open to fail-closed:
+  - `canReadDetectionRules(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canTestDetectionRules(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canAuthorDetectionRules(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canManageDetectionRules(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canReadCases(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canCreateCase(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canUpdateCase(roleId?: RoleId)`: returns `false` if `!roleId`.
+  - `canManageCase(roleId?: RoleId)`: returns `false` if `!roleId`.
+
+#### `app/core/security-service.ts`
+- Added explicit RBAC imports and session enforcement (`this._assertSession()`) across all Detection and Case mutations:
+  - Detection mutations: `createDetectionRuleDraft`, `updateDetectionRuleDraft`, `testDetectionRule`, `publishDetectionRule`, `enableDetectionRule`, `disableDetectionRule`, `deprecateDetectionRule`.
+  - Case mutations: `createCase`, `updateCase`, `assignCase`, `unassignCase`, `changeCasePriority`, `changeCaseStatus`, `resolveCase`, `closeCase`, `reopenCase`, `linkIncidentToCase`, `unlinkIncidentFromCase`, `linkHuntToCase`, `unlinkHuntFromCase`, `addCaseNote`, `updateCaseNote`, `addCaseTask`, `updateCaseTask`, `addCaseFinding`, `updateCaseFinding`.
+
+#### `app/core/providers/local-provider.ts`
+- Enforced `this.getCurrentSession()` and strict session derivation across all Detection and Case mutations:
+  - Requires an active session; missing session throws `Unauthorized: Operation requires an active session.`.
+  - Verifies caller-supplied actor matches session username; mismatched actor throws `Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`.
+  - Derives role strictly from `session.role` and audit identity from `session.username`, ignoring any caller-supplied role arguments.
+  - Enforces RBAC permissions prior to state mutation or audit record generation (`canAuthorDetectionRules`, `canManageDetectionRules`, `canTestDetectionRules`, `canCreateCase`, `canUpdateCase`, `canManageCase`).
+  - Removed privileged default arguments in `testDetectionRule`.
+
+#### `app/core/auth/local-auth-service.ts`
+- Registered test accounts `sarah.chen` (`SOC_MANAGER`), `analyst.1` (`L2_ANALYST`), and `l1.analyst` (`L1_ANALYST`) in `LOCAL_ACCOUNTS` to support test suites.
+
+#### Test Updates & Verification
+- `scripts/test-step6-cases.ts`: Authenticates appropriate sessions before invoking provider and service methods in suites 4–8.
+- `scripts/test-step9-detection-engineering.ts`: Authenticates appropriate sessions before simulation testing, rule authoring, and RBAC tests.
+- `scripts/test-cases-detection-authorization.ts`: Dedicated test suite testing:
+  1. RBAC permission helper fail-closed logic and canonical matrix across all 6 roles.
+  2. Missing session denial across 26 SecurityService and 21 LocalProvider mutation methods, verifying 0 state mutations and 0 audit creations.
+  3. Unauthorized role denial (`INCIDENT_RESPONDER` creating cases, `L1_ANALYST` closing/reopening/assigning cases, `L1_ANALYST` authoring/publishing rules, `L2_ANALYST` publishing rules), asserting 0 mutations.
+  4. Caller-supplied role spoofing denial (e.g. L1 supplying `PLATFORM_ADMIN`, Responder supplying `SOC_MANAGER`), asserting 0 mutations.
+  5. Audit actor impersonation rejection, asserting 0 mutations.
+  6. Authorized operations lifecycle and authentic audit trail generation for `SOC_MANAGER` and `L2_ANALYST`.
+  7. Preserved read access across all 6 roles for cases and detection rules.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Cases & Detection Authorization Suite (`npx tsx scripts/test-cases-detection-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all checks passed cleanly).
+2. **Step 6 Cases Suite (`npx tsx scripts/test-step6-cases.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 10/10 test suites passed).
+3. **Step 9 Detection Engineering Suite (`npx tsx scripts/test-step9-detection-engineering.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 12/12 sections, 65/65 assertions passed).
+4. **Step 3 Detection Engine Suite (`npx tsx scripts/test-detection-engine.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 14/14 tests passed).
+5. **Containment Authorization Suite (`npx tsx scripts/test-containment-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all tests passed).
+6. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+7. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
+8. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
