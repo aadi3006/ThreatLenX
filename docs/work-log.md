@@ -2385,3 +2385,72 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
    - **Exit Code**: `0` (**PASS**, Vite build completed cleanly).
 
 
+
+---
+
+## Verification of Batches 1–3: Authorization, Keyboard Navigation, and Evidence Hashing
+
+### 1. Task Objective & Scope
+- **User Request**:
+  - Finish verification of the three batches (Batch 1: Cases/Detection Authorization, Batch 2: Keyboard Behavior, Batch 3: Evidence Hashing).
+  - Rerun `test-evidence-integrity-persistence.cjs` using an isolated browser profile.
+  - Investigate the earlier failure without weakening assertions, overwriting hashes, or reseeding evidence.
+  - Run existing Cases and Detection browser interactions, plus keyboard navigation checks to verify active UI behavior after authorization changes.
+  - Report actual exit codes and failures. Correct the work log's status if any check remains blocked or failing.
+  - Fix only demonstrated regressions; commit and push corrections.
+
+---
+
+### 2. Investigation of Earlier Test Failure & Resolution
+- **Investigation of `test-evidence-integrity-persistence.cjs`**:
+  - **Symptom**: Suite 3 previously threw `Error: Failed to mount Evidence workspace from Hub`.
+  - **Root Cause**: The local development server on port 3000 was either not running during test execution or `vinext dev` by default bound exclusively to IPv6 `localhost` (`::1`), rejecting IPv4 connections directed to `127.0.0.1:3000` with `ECONNREFUSED`.
+  - **Resolution**: Bound the development server explicitly across all host interfaces via `npx vinext dev -H 0.0.0.0`, enabling seamless IPv4 (`127.0.0.1:3000`) and IPv6 (`localhost:3000`) target resolution.
+  - **Integrity & Immutability Verification**:
+    - Ran `node scripts/test-evidence-integrity-persistence.cjs`:
+      - **Suite 1 (Seed Hash Exact Text Payload Validation)**: Validated exact text note payload matches authentic seed hash `20f5769d771ebca2335a2408655c8a778fa037a23bb0cb0cffe47c6d51d5d6a2`.
+      - **Suite 2 (Custody Reconciliation & Mismatch Immutability Logic)**: Verified stored hashes are never overwritten on mismatch, valid verified states persist across simulated refresh, and tampered evidence mismatch states persist without mutating original stored records.
+      - **Suite 3 (Browser E2E Verify -> Refresh -> Displayed Result)**: In isolated browser profile, navigated to Evidence Vault (`Zone 5`), verified live text note hash recalculation, refreshed page (`Page.reload`), confirmed verification banner persistence from custody history, verified stored hash immutability, and verified prominent display of tampered mismatch banner with recalculated hash for analyst review.
+    - **Assertions & Data Preservation**: 0 assertions weakened, 0 hashes overwritten, 0 evidence records reseeded.
+
+---
+
+### 3. Active UI Browser Interactions & Keyboard Verification Results
+All browser interactions and UI verification suites were executed against the active application:
+
+| Test Script | Description | Exit Code | Result | Key Observations / Metrics |
+| :--- | :--- | :---: | :---: | :--- |
+| `scripts/test-evidence-integrity-persistence.cjs` | Evidence Vault Browser E2E Integrity & Refresh Persistence | `0` | **PASS** | 3/3 suites passed; hash immutability verified; match banner and mismatch banner correctly rendered after page reload. |
+| `scripts/test-case-workspace-interactions.cjs` | Cases Workspace 1440/1920 Browser Layout & Multi-tab Audit | `0` | **PASS** | 12/12 stages passed; zero horizontal overflow; all 36 IDB stores perfectly preserved (0 cleared, 0 reseeded). |
+| `scripts/test-case-mutations-isolated.cjs` | Cases Workspace Isolated Profile Mutation Lifecycle | `0` | **PASS** | 6/6 stages passed; case creation, finding addition, task toggling, and status lifecycle verified in isolated Chrome instance. |
+| `scripts/test-detection-inspect-details.cjs` | Detection Engineering Simulation & Version Inspection | `0` | **PASS** | Simulation evaluated 22 events (2 matched); versions and diff inspector functional. |
+| `scripts/test-detection-selection-lifecycle.cjs` | Detection Engineering Selection Retention & Unmount Lifecycle | `0` | **PASS** | 8/8 stages passed; selected rule retained across own mutations & unrelated updates; clean fallback on removal; unmount cleanup verified. |
+| `scripts/test-keyboard-behavior.ts` | Keyboard Accessible Traversal, Input Protection & Controller Hotkeys | `0` | **PASS** | 34/34 assertions passed; native Tab/Shift+Tab restored; Enter/Space activation functional; `<input>`, `<textarea>`, `<select>`, and sliders protected. |
+| `scripts/test-incident-selection-navigation.ts` | Cross-Workspace Incident Selection & Explicit No-Selection Handling | `0` | **PASS** | 4/4 suites passed; selected incident retained across all workspaces; no hardcoded fallbacks; removed incidents handled cleanly. |
+| `scripts/test-soc-navigation.ts` | SOC Navigation State, 6 Hub Zones & Hierarchical Esc | `0` | **PASS** | 7/7 suites passed; Hub default state, zone transitions, dynamic IDs, hierarchical Escape verified. |
+| `scripts/test-evidence-hashing.ts` | Web Crypto SHA-256 Engine, Supported Payloads & Strict Type Checks | `0` | **PASS** | 38 assertions passed; NIST/RFC vectors match; malformed payloads throw `TypeError`; missing Web Crypto throws descriptive error. |
+| `scripts/test-step7-evidence.ts` | Step 7 Offline Evidence Management Engine & Custody Trail | `0` | **PASS** | 11/11 suites passed; baseline Operation BlackTide evidence preserved; sequential numbering; immutability enforced; RBAC and audit logged. |
+| `scripts/test-cases-detection-authorization.ts` | Cases & Detection RBAC Enforcement & Identity Derivation | `0` | **PASS** | Missing session denied; unauthorized roles denied; caller-supplied role spoofing blocked; spoofed actor blocked; authorized workflows succeed. |
+| `scripts/test-containment-authorization.ts` | Response & Containment Provider Authorization Enforcement | `0` | **PASS** | Active session required; role-override bypass blocked; spoofed actor blocked; dry-run, approve, execute, rollback lifecycle verified. |
+| `npx tsc --noEmit` | Project TypeScript Typecheck | `0` | **PASS** | 0 errors across entire codebase. |
+| `npm run build` | Framework Production Build (`vinext build`) | `0` | **PASS** | Built cleanly with 0 `node:crypto` warnings. |
+| `npm run build:vercel` | Static / Production Build (`vite build`) | `0` | **PASS** | Built cleanly with 0 errors. |
+
+---
+
+### 4. Summary of Demonstrated Regressions & Unresolved Findings
+- **Demonstrated Regressions**: **0** (Zero regressions detected across all suites; all suites pass with exit code `0`).
+- **Unresolved Findings**: **None** (All authorization checks, keyboard handlers, evidence hashing routines, and browser interaction tests are fully validated and functioning properly).
+
+---
+
+### 5. Repository Commits for the Three Batches
+- **Batch 1 (Cases & Detection Authorization)**:
+  - Commit: [`0b9a34447cdad6b15b8b0c4f2812ac65c434dcf7`](https://github.com/aadi3006/ThreatLenX/commit/0b9a34447cdad6b15b8b0c4f2812ac65c434dcf7)
+  - Description: `security: enforce active session, session-derived roles, and audit identity on cases and detection mutations`
+- **Batch 2 (Keyboard Behavior)**:
+  - Commit: [`ba2b6e38a136228e4ce665018abbd335f8c2ad27`](https://github.com/aadi3006/ThreatLenX/commit/ba2b6e38a136228e4ce665018abbd335f8c2ad27)
+  - Description: `fix: restore native tab/enter/space keyboard navigation and protect interactive controls`
+- **Batch 3 (Evidence Hashing)**:
+  - Commit: [`c3f90dff196aeaa6d8a5473d2fe62079f2b95750`](https://github.com/aadi3006/ThreatLenX/commit/c3f90dff196aeaa6d8a5473d2fe62079f2b95750)
+  - Description: `feat: harden evidence crypto using web crypto API with strict payload validation`
