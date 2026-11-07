@@ -227,9 +227,10 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: In
         <div className="soc-failure-actions" style={{ marginTop: 12 }}>
           <button
             type="button"
-            className="soc-remediation-btn"
+            className="soc-remediation-btn inv-list-back-btn"
             onClick={() => {
               cyberAudio.playClick();
+              socNavStore.selectIncident(null);
               spatialNavStore.navigateBack();
             }}
           >
@@ -283,6 +284,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: In
               socNavStore.getState().previousScreen?.workspace === 'CASES' ? 'CASES' :
               socNavStore.getState().previousScreen?.workspace === 'HUNTING' ? 'HUNTING' :
               socNavStore.getState().previousScreen?.workspace === 'EVIDENCE' ? 'EVIDENCE' :
+              socNavStore.getState().previousScreen?.workspace === 'INVESTIGATION' ? 'INCIDENTS' :
               'COMMAND CENTER'
             }
           </button>

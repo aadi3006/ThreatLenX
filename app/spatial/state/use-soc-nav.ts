@@ -273,8 +273,12 @@ class SocNavStore {
         this.state = {
           ...this.state,
           workspace: prev.workspace,
-          // Preserve selections if prev had none
-          selectedIncidentId: prev.selectedIncidentId ?? this.state.selectedIncidentId,
+          // If returning to INVESTIGATION list (prev had no incident), restore null
+          // If returning to a different workspace, preserve selections if prev had none
+          selectedIncidentId:
+            prev.workspace === 'INVESTIGATION' && prev.selectedIncidentId === null
+              ? null
+              : (prev.selectedIncidentId ?? this.state.selectedIncidentId),
           selectedEntityId: prev.selectedEntityId ?? this.state.selectedEntityId,
           activeInvestigationPanel: prev.activeInvestigationPanel,
           previousScreen: historyCopy.length > 0 ? historyCopy[historyCopy.length - 1] : null,

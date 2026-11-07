@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSocNav, socNavStore } from './spatial/state/use-soc-nav';
 import { spatialNavStore } from './spatial/state/use-spatial-nav';
-import { useSpatialDiscreteState } from './spatial-transform';
+import { useSpatialDiscreteState, spatialTransform } from './spatial-transform';
 import { spatialController } from './spatial-controller';
 import { SpatialCommandHub, type SpatialHubZone } from './spatial/hub/SpatialCommandHub';
 import IncidentUniverse from './spatial/incident-universe/IncidentUniverse';
 import InvestigationHub from './spatial/investigation/InvestigationHub';
+import IncidentListWorkspace from './spatial/investigation/IncidentListWorkspace';
 import ThreatHuntingWorkspace from './spatial/hunting/ThreatHuntingWorkspace';
 import CaseWorkspace from './spatial/cases/CaseWorkspace';
 import EvidenceWorkspace from './spatial/evidence/EvidenceWorkspace';
@@ -23,7 +24,7 @@ interface SocSpatialWrapperProps {
 
 export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperProps) {
   const nav = useSocNav();
-  const { pointedPanelId } = useSpatialDiscreteState();
+  const { pointedPanelId, focusedPanelId } = useSpatialDiscreteState();
   const { incidents } = useSecuritySpatial();
   const [perfMode, setPerfMode] = useState<PerformanceMode>(() => performanceManager.getMode());
 
@@ -47,18 +48,16 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
   const handleSelectPanel = useCallback((id: string) => {
     cyberAudio.playSelect();
     socNavStore.selectIncident(id);
+    spatialTransform.setFocusedPanel(id);
   }, []);
 
   const handleExitFocus = useCallback(() => {
     cyberAudio.playClick();
-    socNavStore.selectIncident(null);
+    spatialTransform.setFocusedPanel(null);
   }, []);
 
   const handleNavigateZone = useCallback((zone: SpatialHubZone) => {
     cyberAudio.playModeSwitch();
-    if (zone === 'COMMAND') {
-      socNavStore.selectIncident(null);
-    }
     socNavStore.goToWorkspace(zone);
     spatialNavStore.goToWorkspace(zone as any);
   }, []);
@@ -68,8 +67,6 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
     socNavStore.goToHub();
   }, []);
 
-  const effectiveIncidentId = nav.selectedIncidentId || incidents[0]?.id || '';
-
   return (
     <div className={`soc-spatial-wrapper mode-${nav.workspace.toLowerCase()}`}>
       {/* Workspace Stage Container with Normal Scrolling */}
@@ -78,7 +75,7 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
           <div className="spatial-universe-layer">
             <IncidentUniverse
               mode={nav.workspace}
-              focusedPanelId={nav.selectedIncidentId}
+              focusedPanelId={focusedPanelId}
               pointedPanelId={pointedPanelId}
               onRegisterPanel={handleRegisterPanel}
               onSelectPanel={handleSelectPanel}
@@ -89,14 +86,24 @@ export default function SocSpatialWrapper({ onTriggerAlert }: SocSpatialWrapperP
           </div>
         ) : nav.workspace === 'INVESTIGATION' ? (
           <div className="spatial-investigation-layer">
-            <InvestigationHub
-              incidentId={effectiveIncidentId}
-              onRegister={handleRegisterPanel}
-              onExitFocus={() => {
-                socNavStore.navigateBack();
-              }}
-              onClose={handleReturnToHub}
-            />
+            {nav.selectedIncidentId ? (
+              <InvestigationHub
+                incidentId={nav.selectedIncidentId}
+                onRegister={handleRegisterPanel}
+                onExitFocus={() => {
+                  socNavStore.navigateBack();
+                }}
+                onClose={handleReturnToHub}
+              />
+            ) : (
+              <IncidentListWorkspace
+                onSelectIncident={(id) => {
+                  socNavStore.goToInvestigation(id);
+                }}
+                onBackToHub={handleReturnToHub}
+                onRegisterPanel={handleRegisterPanel}
+              />
+            )}
           </div>
         ) : nav.workspace === 'HUNTING' ? (
           <ThreatHuntingWorkspace

@@ -1895,3 +1895,79 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
    - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly).
 4. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
+
+## [2026-11-07] Incident Selection Persistence Across Navigation & Explicit Selection Handling
+
+### 1. Overview & Objectives
+- Fixed incident selection persistence across workspace transitions and panel focus clearing.
+- Traced the active navigation stores (`socNavStore`, `spatialNavStore`) and the `spatialTransform` bridge:
+  - Previously, `spatialTransform.setFocusedPanel(null)` invoked `socNavStore.selectIncident(null)`, clearing `selectedIncidentId` whenever panel focus or workspace navigation occurred.
+  - In `soc-spatial.tsx`, `handleNavigateZone` explicitly wiped `selectedIncidentId: null` on navigating to `COMMAND`.
+  - In `soc-spatial.tsx`, `handleExitFocus` called `socNavStore.selectIncident(null)`.
+  - In `soc-spatial.tsx`, `effectiveIncidentId` used a hardcoded fallback (`nav.selectedIncidentId || incidents[0]?.id || ''`).
+  - In `use-spatial-nav.ts`, `preservedInvestigationItem` and `goToItem` defaulted to `'incident-001'`.
+- Hardened navigation to preserve `selectedIncidentId` across all workspace transitions and panel focus clearing.
+- Handled no selection explicitly: when `selectedIncidentId === null`, `IncidentListWorkspace` is rendered in `INVESTIGATION` without falling back to `incident-001` or `incidents[0]`.
+- Handled removed incidents cleanly in `InvestigationHub`: controlled acquisition failure presents explanation with remediation action (`RETURN TO INCIDENTS`), which clears selection and transitions to `IncidentListWorkspace`.
+- Preserved separate Hub (`goToHub()`), Back, and Escape behavior, UI appearance, and stored IndexedDB data.
+
+---
+
+### 2. Implementation Summary
+
+#### `app/spatial-transform.ts`
+- Decoupled `focusedPanelId` from `socNavStore.selectedIncidentId`:
+  - `SpatialTransformBridge` now maintains its own `focusedPanelId` state.
+  - In `setFocusedPanel(panelId: string | null)`: updates `this.focusedPanelId = cleanId`. When `cleanId !== null`, updates `socNavStore.selectIncident(cleanId)`. When clearing focus (`cleanId === null`), does NOT clear `socNavStore.selectedIncidentId`.
+  - `computeState()` computes `mode = this.focusedPanelId && nav.workspace === 'COMMAND' ? 'FOCUS' : nav.workspace`.
+
+#### `app/soc-spatial.tsx`
+- Removed `if (zone === 'COMMAND') socNavStore.selectIncident(null)` from `handleNavigateZone`.
+- Updated `handleExitFocus` to call `spatialTransform.setFocusedPanel(null)` instead of wiping `socNavStore.selectIncident(null)`.
+- Updated `handleSelectPanel` to call both `socNavStore.selectIncident(id)` and `spatialTransform.setFocusedPanel(id)`.
+- Removed `effectiveIncidentId` fallback to `incidents[0]`.
+- In `nav.workspace === 'INVESTIGATION'`:
+  - If `nav.selectedIncidentId` is set, renders `InvestigationHub` for that incident.
+  - If `nav.selectedIncidentId === null`, renders `IncidentListWorkspace` with `onSelectIncident={(id) => socNavStore.goToInvestigation(id)}` and `onBackToHub={handleReturnToHub}`.
+- In `IncidentUniverse`: passed `focusedPanelId={focusedPanelId}` from `useSpatialDiscreteState()`.
+
+#### `app/spatial-controller.ts`
+- Handled `"EXIT_FOCUS"` by calling `spatialTransform.setFocusedPanel(null)` instead of clearing `socNavStore.selectIncident(null)`.
+
+#### `app/spatial/state/use-spatial-nav.ts`
+- In `DEFAULT_STATE`: updated `preservedInvestigationItem` from `'incident-001'` to `null`.
+- In `goToItem`: removed `'incident-001'` fallback; dynamically derives `itemId` from arguments, `socNavStore.selectedIncidentId`, or `preservedInvestigationItem`.
+
+#### `app/spatial/state/use-soc-nav.ts`
+- In `navigateBack()`:
+  - If returning to `INVESTIGATION` and `prev.selectedIncidentId === null`, restores `null` so the user returns to the Incident List.
+  - When returning to other workspaces, preserves the active `selectedIncidentId`.
+
+#### `app/spatial/investigation/InvestigationHub.tsx`
+- In the error state for removed/missing incidents, updated "RETURN TO INCIDENTS" remediation button (`.inv-list-back-btn`) to clear `socNavStore.selectIncident(null)` and invoke `spatialNavStore.navigateBack()`.
+- Updated Back button label hierarchy to display `INCIDENTS` when previous screen in Investigation was the list.
+
+#### `scripts/test-incident-selection-navigation.ts`
+- Created automated test suite covering:
+  1. Opening non-first incident (`incident-002`), clearing panel focus without losing selection, visiting all workspaces (`COMMAND`, `HUNTING`, `CASES`, `EVIDENCE`, `DETECTION`, `HUB`), returning to `INVESTIGATION`, and asserting `incident-002` remains selected.
+  2. Explicit no-selection handling: `selectedIncidentId === null` entering `INVESTIGATION` retains `null` without falling back to `incident-001` or `incidents[0]`.
+  3. Removed incident handling using isolated storage: verified missing incident acquisition failure and remediation button clearing selection back to `IncidentListWorkspace`.
+  4. Separate Hub, Back, and Escape behavior verification.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Incident Selection Navigation Suite (`npx tsx scripts/test-incident-selection-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 4/4 test suites passed).
+2. **Central SOC Navigation Suite (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 7/7 suites passed).
+3. **Stage 5 Hub & Navigation Suite (`node scripts/test-hub-stage5.cjs`)**:
+   - **Exit Code**: `0` (**PASS**, all 8/8 suites passed: 6 zone links & return navigation including INCIDENT INVESTIGATION, keyboard navigation, numeric keys [1-6], layout metrics, and 100% IDB data preservation across 36 stores).
+4. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+5. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
+6. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).

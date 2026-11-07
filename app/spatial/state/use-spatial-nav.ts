@@ -163,7 +163,7 @@ const DEFAULT_STATE: SpatialNavState = {
   breadcrumb: [{ level: 'HUB', label: 'SPATIAL HUB' }],
   lastNavTimestamp: 0,
   lastNavDirection: 'FORWARD',
-  preservedInvestigationItem: 'incident-001',
+  preservedInvestigationItem: null,
   preservedInvestigationPanel: 'TIMELINE',
 };
 
@@ -296,7 +296,8 @@ class SpatialNavStore {
     const currentSocWs = typeof window !== 'undefined' ? (window as any).__socNavStore?.getState()?.workspace : undefined;
     if (KNOWN_WS.includes(workspaceOrItemId)) {
       ws = workspaceOrItemId as SpatialMode;
-      itemId = itemIdOrLabel || 'incident-001';
+      const currentSocNav = typeof window !== 'undefined' ? (window as any).__socNavStore?.getState()?.selectedIncidentId : undefined;
+      itemId = itemIdOrLabel || currentSocNav || this.state.preservedInvestigationItem || '';
       itemLabel = undefined;
     } else {
       ws = (currentSocWs && currentSocWs !== 'HUB')

@@ -27,6 +27,7 @@ export type SpatialDiscreteListener = (state: SpatialDiscreteState) => void;
 
 class SpatialTransformBridge {
   private pointedPanelId: string | null = null;
+  private focusedPanelId: string | null = null;
   private listeners: Set<SpatialDiscreteListener> = new Set();
   private cachedState: SpatialDiscreteState;
 
@@ -41,14 +42,17 @@ class SpatialTransformBridge {
 
   private computeState(): SpatialDiscreteState {
     const nav = socNavStore.getState();
+    if (nav.selectedIncidentId === null && this.focusedPanelId !== null && nav.workspace !== 'COMMAND') {
+      this.focusedPanelId = null;
+    }
     const mode =
-      nav.selectedIncidentId && nav.workspace === 'COMMAND'
+      this.focusedPanelId && nav.workspace === 'COMMAND'
         ? ('FOCUS' as SpatialMode)
         : (nav.workspace as SpatialMode);
 
     return {
       mode,
-      focusedPanelId: nav.selectedIncidentId,
+      focusedPanelId: this.focusedPanelId,
       pointedPanelId: this.pointedPanelId,
     };
   }
@@ -91,11 +95,16 @@ class SpatialTransformBridge {
 
   public setFocusedPanel(panelId: string | null): void {
     const cleanId = panelId ? panelId.replace('focus-', '') : null;
-    socNavStore.selectIncident(cleanId);
+    this.focusedPanelId = cleanId;
+    if (cleanId !== null) {
+      socNavStore.selectIncident(cleanId);
+    }
+    this.updateState();
   }
 
   public resetTransform(): void {
     this.pointedPanelId = null;
+    this.focusedPanelId = null;
     this.updateState();
   }
 

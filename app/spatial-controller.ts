@@ -1,4 +1,5 @@
 import { socNavStore } from './spatial/state/use-soc-nav';
+import { spatialTransform } from './spatial-transform';
 import { cyberAudio } from './cyber-audio';
 
 export class SpatialInteractionController {
@@ -34,7 +35,7 @@ export class SpatialInteractionController {
         socNavStore.goToHub();
         break;
       case "EXIT_FOCUS":
-        socNavStore.selectIncident(null);
+        spatialTransform.setFocusedPanel(null);
         break;
       default:
         break;
