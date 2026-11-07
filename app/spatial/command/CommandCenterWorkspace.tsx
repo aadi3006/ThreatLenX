@@ -26,6 +26,7 @@ import { useSecuritySpatial } from '../state/use-security-spatial';
 import { spatialNavStore, useSpatialNav, type CommandPanel } from '../state/use-spatial-nav';
 import { securityService } from '../../core/security-service';
 import { cyberAudio } from '../../cyber-audio';
+import { isInteractiveControl } from '../common/keyboard-nav';
 import type { PerformanceMode } from '../performance-mode';
 import type { Case } from '../../core/models/case';
 import type { ThreatIntelRecord } from '../../core/models/threat-intel';
@@ -313,7 +314,7 @@ export default function CommandCenterWorkspace({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (isInteractiveControl(target)) return;
 
       if (activePanel === 'OVERVIEW') {
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -512,6 +513,13 @@ export default function CommandCenterWorkspace({
                   tabIndex={0}
                   className={`cmd-cat-card ${isSelected ? 'is-selected' : ''}`}
                   onMouseEnter={() => setSelectedTileIndex(idx)}
+                  onFocus={() => setSelectedTileIndex(idx)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelectCategory(cat.id);
+                    }
+                  }}
                   onClick={() => handleSelectCategory(cat.id)}
                 >
                   <div className="cmd-cat-top">

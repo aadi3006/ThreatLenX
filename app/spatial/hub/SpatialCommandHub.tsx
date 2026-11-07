@@ -23,6 +23,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import { cyberAudio } from '../../cyber-audio';
+import { isInteractiveControl, isModifierActive } from '../common/keyboard-nav';
 import type { PerformanceMode } from '../performance-mode';
 import './spatial-command-hub.css';
 
@@ -283,30 +284,42 @@ export function SpatialCommandHub({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isInteractiveControl(e.target)) return;
 
       switch (e.key) {
         case 'ArrowRight':
-        case 'ArrowDown':
-        case 'Tab':
+        case 'ArrowDown': {
           e.preventDefault();
           cyberAudio.playClick();
-          setFocusedIndex((prev) => (prev + 1) % destinations.length);
+          const nextIndex = (focusedIndex + 1) % destinations.length;
+          setFocusedIndex(nextIndex);
+          const nextNode = destinations[nextIndex];
+          if (nextNode) {
+            nodeRefs.current.get(nextNode.id)?.focus();
+          }
           break;
+        }
 
         case 'ArrowLeft':
-        case 'ArrowUp':
+        case 'ArrowUp': {
           e.preventDefault();
           cyberAudio.playClick();
-          setFocusedIndex((prev) => (prev - 1 + destinations.length) % destinations.length);
+          const prevIndex = (focusedIndex - 1 + destinations.length) % destinations.length;
+          setFocusedIndex(prevIndex);
+          const prevNode = destinations[prevIndex];
+          if (prevNode) {
+            nodeRefs.current.get(prevNode.id)?.focus();
+          }
           break;
+        }
 
         case 'Enter':
-        case ' ':
+        case ' ': {
           e.preventDefault();
           const target = destinations[focusedIndex];
           if (target) executeTransition(target);
           break;
+        }
 
         case '1':
         case '2':
@@ -314,6 +327,7 @@ export function SpatialCommandHub({
         case '4':
         case '5':
         case '6': {
+          if (isModifierActive(e)) return;
           const idx = parseInt(e.key, 10) - 1;
           if (destinations[idx]) {
             e.preventDefault();
@@ -423,6 +437,16 @@ export function SpatialCommandHub({
                 cyberAudio.playClick();
               }}
               onMouseLeave={() => setHoveredId(null)}
+              onFocus={() => {
+                setFocusedIndex(idx);
+                cyberAudio.playClick();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  executeTransition(node);
+                }
+              }}
               onClick={() => executeTransition(node)}
               role="button"
               tabIndex={0}

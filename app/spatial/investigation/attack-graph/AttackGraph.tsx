@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInvestigation } from '../InvestigationContext';
 import { spatialController } from '../../../spatial-controller';
 import { cyberAudio } from '../../../cyber-audio';
+import { isInteractiveControl } from '../../common/keyboard-nav';
 import { Brain } from 'lucide-react';
 import ContextualAiAssistant from '../../ai/ContextualAiAssistant';
 import type {
@@ -771,7 +772,7 @@ export default function AttackGraph({ onSelectEntity }: AttackGraphProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (isInteractiveControl(target)) return;
       if (!graph || graph.nodes.length === 0) return;
 
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {

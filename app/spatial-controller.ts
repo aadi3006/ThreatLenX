@@ -1,6 +1,11 @@
 import { socNavStore } from './spatial/state/use-soc-nav';
 import { spatialTransform } from './spatial-transform';
 import { cyberAudio } from './cyber-audio';
+import {
+  isInteractiveControl,
+  isInteractiveInput,
+  isModifierActive,
+} from './spatial/common/keyboard-nav';
 
 export class SpatialInteractionController {
   private panelElements: Map<string, HTMLElement> = new Map();
@@ -50,55 +55,57 @@ export class SpatialInteractionController {
     this.panelElements.clear();
   }
 
-  private attachKeyboard(): void {
+  public attachKeyboard(): void {
+    if (typeof window === 'undefined' || this.keydownListener) {
+      return;
+    }
+
     this.keydownListener = (e: KeyboardEvent) => {
       if (e.defaultPrevented) {
         return;
       }
 
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+
+      // Never intercept when user is interacting with form controls or interactive elements
+      if (isInteractiveControl(target)) {
         return;
       }
 
+      // Never intercept hotkeys when modifier keys (Cmd, Ctrl, Alt) are pressed
+      if (isModifierActive(e)) {
+        return;
+      }
+
+      const currentWorkspace = socNavStore.getState().workspace;
+
       switch (e.key.toLowerCase()) {
         case 'f':
-          e.preventDefault();
-          cyberAudio.playModeSwitch();
-          socNavStore.goToWorkspace('COMMAND');
-          break;
-
         case 'h':
-          e.preventDefault();
-          cyberAudio.playModeSwitch();
-          socNavStore.goToWorkspace('HUNTING');
-          break;
-
         case 'c':
-          e.preventDefault();
-          cyberAudio.playModeSwitch();
-          socNavStore.goToWorkspace('CASES');
-          break;
-
         case 'e':
+        case 'd': {
+          // Single-key workspace shortcuts apply only on appropriate surfaces (e.g. Hub)
+          if (currentWorkspace !== 'HUB') {
+            break;
+          }
           e.preventDefault();
           cyberAudio.playModeSwitch();
-          socNavStore.goToWorkspace('EVIDENCE');
+          if (e.key.toLowerCase() === 'f') socNavStore.goToWorkspace('COMMAND');
+          else if (e.key.toLowerCase() === 'h') socNavStore.goToWorkspace('HUNTING');
+          else if (e.key.toLowerCase() === 'c') socNavStore.goToWorkspace('CASES');
+          else if (e.key.toLowerCase() === 'e') socNavStore.goToWorkspace('EVIDENCE');
+          else if (e.key.toLowerCase() === 'd') socNavStore.goToWorkspace('DETECTION');
           break;
-
-        case 'd':
-          e.preventDefault();
-          cyberAudio.playModeSwitch();
-          socNavStore.goToWorkspace('DETECTION');
-          break;
+        }
 
         case 'escape': {
           if (
-            socNavStore.getState().workspace === 'HUNTING' ||
-            socNavStore.getState().workspace === 'CASES' ||
-            socNavStore.getState().workspace === 'EVIDENCE' ||
-            socNavStore.getState().workspace === 'DETECTION' ||
-            socNavStore.getState().workspace === 'INVESTIGATION'
+            currentWorkspace === 'HUNTING' ||
+            currentWorkspace === 'CASES' ||
+            currentWorkspace === 'EVIDENCE' ||
+            currentWorkspace === 'DETECTION' ||
+            currentWorkspace === 'INVESTIGATION'
           ) {
             break;
           }
@@ -116,7 +123,7 @@ export class SpatialInteractionController {
         case '6':
         case '7':
         case '8': {
-          if (socNavStore.getState().workspace === 'HUB') {
+          if (currentWorkspace === 'HUB') {
             break;
           }
           const index = parseInt(e.key, 10) - 1;

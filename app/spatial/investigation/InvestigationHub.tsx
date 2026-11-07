@@ -44,6 +44,7 @@ import { spatialTransform } from '../../spatial-transform';
 import { securityService } from '../../core/security-service';
 import { spatialNavStore, useSpatialNav } from '../state/use-spatial-nav';
 import { socNavStore } from '../state/use-soc-nav';
+import { isInteractiveInput, isInteractiveControl, isModifierActive } from '../common/keyboard-nav';
 import './investigation.css';
 
 // ─── View component map ───────────────────────────────────────────────────────
@@ -113,11 +114,13 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: In
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && choreography.phase === 'CONTEXT_BUILDING') {
-        e.preventDefault();
-        cyberAudio.playClick();
-        skipChoreography();
+        if (!isInteractiveControl(e.target)) {
+          e.preventDefault();
+          cyberAudio.playClick();
+          skipChoreography();
+        }
       } else if (e.key === 'a' || e.key === 'A') {
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        if (isInteractiveInput(e.target) || isModifierActive(e)) return;
         cyberAudio.playClick();
         setIsContextualAiOpen((prev) => !prev);
       }
@@ -166,11 +169,10 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: In
     }
   };
 
-  // ── Keyboard Navigation (Left/Right → cycle panel, Enter → activate, Escape → back to list) ──
+  // ── Keyboard Navigation (Left/Right → cycle panel, Escape → back to list) ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (isInteractiveControl(e.target)) return;
 
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -184,9 +186,6 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: In
         const currentIdx = VIEW_ORDER.indexOf(activeView);
         const nextIdx = (currentIdx + 1) % VIEW_ORDER.length;
         handleSetView(VIEW_ORDER[nextIdx]);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        cyberAudio.playSelect();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         cyberAudio.playClick();

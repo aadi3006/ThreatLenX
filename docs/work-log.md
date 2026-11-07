@@ -1777,6 +1777,102 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
 8. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
 
+---
+
+## Batch 2: Keyboard Behavior & Accessible Navigation Hardening
+
+### 1. Task Objective & Prompt
+- **User Request**: Batch 2 — Keyboard behavior.
+  - Inspect Hub and Investigation keyboard handlers.
+  - Restore normal Tab/Shift+Tab navigation and native Enter/Space activation.
+  - Preserve select, input, textarea, contentEditable, and slider keyboard behavior.
+  - Apply shortcuts only on appropriate surfaces; preserve Hub, Back, and Escape behavior.
+  - Keep visual design and stored data unchanged.
+  - Test keyboard access to Hub zones, focused buttons, forms, dropdowns, and Investigation navigation.
+  - Run navigation tests, TypeScript, and both builds.
+  - Document actual results, commit only this batch, and push. Stop if checks fail; otherwise proceed to Batch 3.
+
+---
+
+### 2. Code Changes
+
+#### `app/spatial/common/keyboard-nav.ts`
+- Created centralized, robust DOM element and event detection helpers:
+  - `isInteractiveInput(target: EventTarget | null): boolean`: Detects `INPUT`, `TEXTAREA`, `SELECT`, `isContentEditable`, ARIA roles (`slider`, `combobox`, `listbox`, `spinbutton`, `textbox`, `searchbox`), and any descendant within an interactive input container.
+  - `isButtonOrAction(target: EventTarget | null): boolean`: Detects `BUTTON`, `A`, ARIA roles (`button`, `link`, `menuitem`, `tab`), and descendants inside buttons.
+  - `isInteractiveControl(target: EventTarget | null): boolean`: Union of inputs, buttons, sliders, dropdowns, and interactive controls.
+  - `isModifierActive(e: KeyboardEvent): boolean`: Checks whether `metaKey`, `ctrlKey`, or `altKey` is held to prevent hotkey conflicts.
+
+#### `app/spatial/hub/SpatialCommandHub.tsx`
+- **Restored Tab / Shift+Tab Navigation**: Removed `case 'Tab'` from `handleKeyDown` which previously called `e.preventDefault()`, restoring native browser Tab focus ring navigation across all focusable elements.
+- **Native Enter/Space Activation on Hub Nodes**: Added `onFocus={() => setFocusedIndex(idx)}` and `onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); executeTransition(node); } }}` directly to the hub zone node element.
+- **Protected Interactive Controls**: Added `if (isInteractiveControl(e.target)) return;` to the window keydown listener so Enter, Space, and Arrow keys never hijack focused buttons (e.g. Back, Audio, Hub switcher) or form inputs.
+- **Synced DOM Focus on Arrow Navigation**: Arrow keys (`ArrowRight`, `ArrowDown`, `ArrowLeft`, `ArrowUp`) now call `.focus()` on the newly selected node to keep DOM focus aligned.
+- **Protected Quick Launch Numbers (1-6)**: Guarded with `if (isModifierActive(e)) return;` so browser tab switching shortcuts (e.g. `Cmd+1`–`Cmd+6`) and typing numbers into text inputs are never intercepted.
+
+#### `app/spatial/investigation/InvestigationHub.tsx`
+- **Removed Global Enter Hijacking**: Removed blanket `else if (e.key === 'Enter') { e.preventDefault(); cyberAudio.playSelect(); }` from window keydown listener, restoring native click dispatch on focused `<button>` elements (Back, Return to Hub, AI Assistant, Containment actions, Tab buttons).
+- **Protected Controls from Tab Cycling**: Guarded `ArrowLeft` / `ArrowRight` view cycling with `if (isInteractiveControl(e.target)) return;` so dropdowns (`<select>`), sliders (`<input type="range">`), and text inputs retain native arrow key manipulation.
+- **Protected Button Spacebar Activation**: In choreography skip listener, guarded Space with `if (!isInteractiveControl(e.target))` so focused buttons and links can be activated natively by Space without accidentally skipping choreography.
+- **Protected 'A'/'a' Hotkey**: Guarded with `if (isInteractiveInput(e.target) || isModifierActive(e)) return;` so `Cmd+A` / `Ctrl+A` (Select All) and typing 'a' into search boxes or text fields never trigger Contextual AI.
+- **Preserved Hierarchical Escape**: Escape continues to close sub-panels first before returning to the incident list or Hub.
+
+#### `app/spatial/investigation/IncidentListWorkspace.tsx`
+- **Card Keyboard Activation**: Added `onFocus={() => { if (!transitioningIncidentId) setSelectedIndex(index); }}` and `onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(inc); } }}` to incident cards.
+- **Protected Interactive Controls**: Added `if (isInteractiveControl(e.target)) return;` to the window keydown handler, ensuring filter buttons, sort buttons, and inputs retain native Enter and Space activation.
+
+#### `app/spatial/investigation/attack-graph/AttackGraph.tsx`
+- **Protected Controls from Graph Stealing**: Updated keydown handler to check `if (isInteractiveControl(target)) return;` before intercepting Arrow keys and Enter for graph node navigation.
+
+#### `app/spatial/investigation/replay/AttackReplay.tsx`
+- **Protected Scrubber Slider & Buttons**:
+  - `Space`: Guarded with `if (!isButtonOrAction(e.target))` so replay control buttons (Play, Pause, Step, Speed) can be activated via keyboard without double-toggling.
+  - `ArrowLeft` / `ArrowRight`: Guarded with `if (!isInteractiveControl(e.target))` so `<input type="range">` scrubber slider retains native arrow adjustments.
+  - `R` / `r`: Guarded with `if (!isModifierActive(e) && !isInteractiveControl(e.target))` so browser page reload (`Cmd+R` / `Ctrl+R`) is never intercepted.
+
+#### `app/spatial/command/CommandCenterWorkspace.tsx`
+- **Category Tile Keyboard Activation**: Added `onFocus` and `onKeyDown` on category tiles for native Enter/Space activation.
+- **Protected Controls**: Guarded window keydown listener with `if (isInteractiveControl(target)) return;`.
+
+#### `app/spatial/hunting/ThreatHuntingWorkspace.tsx`
+- **Protected Form Inputs and Selects**: Updated gesture and keydown listener to check `if (isInteractiveControl(target) || isModifierActive(e)) return;` before intercepting arrow keys or Enter for pivot navigation.
+
+#### `app/spatial-controller.ts`
+- **Made `attachKeyboard` Public and Idempotent**: Prevents duplicate listeners and supports headless test environments.
+- **Prevented Global Shortcut Hijacking**:
+  - Guarded single-letter shortcuts (`f`, `h`, `c`, `e`, `d`) with `if (isModifierActive(e)) return;` and `if (isInteractiveControl(target)) return;`, preventing `Cmd+C` (Copy), `Ctrl+C`, `Cmd+F` (Find), and typing in controls from triggering workspace switches.
+  - Restricted single-letter shortcuts to appropriate surfaces (`currentWorkspace === 'HUB'`), ensuring analysts working in Hunting, Cases, Evidence, Detection, or Investigation are never unexpectedly switched out of their active workspace.
+  - Guarded quick numbers (1-8) with `if (isModifierActive(e) || isInteractiveInput(target)) return;`.
+
+#### `scripts/test-keyboard-behavior.ts`
+- Created dedicated automated test suite testing:
+  1. Helper detection logic across inputs, textareas, native selects, ARIA sliders, comboboxes, buttons, links, and modifier keys.
+  2. Hub zone keyboard access: normal Tab/Shift+Tab traversal, Enter/Space activation on nodes and buttons, Arrow key navigation without hijacking controls, and modifier-safe quick launch.
+  3. Investigation keyboard access: native button activation on Enter/Space, ArrowLeft/Right tab switching without hijacking sliders/selects, modifier-safe AI hotkey ('A'), and button-safe choreography skip.
+  4. Attack Replay & Scrubber slider keyboard protection.
+  5. Spatial Interaction Controller shortcut hardening: Cmd+C / Ctrl+C copy preservation, dropdown typing preservation, and surface-scoped workspace navigation.
+  6. Hierarchical Escape navigation across workspaces and panels.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Keyboard Behavior Test Suite (`npx tsx scripts/test-keyboard-behavior.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 34 assertions passed).
+2. **SOC Central Navigation Suite (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 7/7 suites passed).
+3. **Incident Selection Navigation Suite (`npx tsx scripts/test-incident-selection-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 4/4 suites passed).
+4. **Cases & Detection Authorization Suite (`npx tsx scripts/test-cases-detection-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all suites passed).
+5. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+6. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
+7. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
+
 
 
 
@@ -2049,3 +2145,99 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
    - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
 8. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
+---
+
+## Batch 2: Keyboard Behavior & Accessible Navigation Hardening
+
+### 1. Task Objective & Prompt
+- **User Request**: Batch 2 — Keyboard behavior.
+  - Inspect Hub and Investigation keyboard handlers.
+  - Restore normal Tab/Shift+Tab navigation and native Enter/Space activation.
+  - Preserve select, input, textarea, contentEditable, and slider keyboard behavior.
+  - Apply shortcuts only on appropriate surfaces; preserve Hub, Back, and Escape behavior.
+  - Keep visual design and stored data unchanged.
+  - Test keyboard access to Hub zones, focused buttons, forms, dropdowns, and Investigation navigation.
+  - Run navigation tests, TypeScript, and both builds.
+  - Document actual results, commit only this batch, and push. Stop if checks fail; otherwise proceed to Batch 3.
+
+---
+
+### 2. Code Changes
+
+#### `app/spatial/common/keyboard-nav.ts`
+- Created centralized, robust DOM element and event detection helpers:
+  - `isInteractiveInput(target: EventTarget | null): boolean`: Detects `INPUT`, `TEXTAREA`, `SELECT`, `isContentEditable`, ARIA roles (`slider`, `combobox`, `listbox`, `spinbutton`, `textbox`, `searchbox`), and any descendant within an interactive input container.
+  - `isButtonOrAction(target: EventTarget | null): boolean`: Detects `BUTTON`, `A`, ARIA roles (`button`, `link`, `menuitem`, `tab`), and descendants inside buttons.
+  - `isInteractiveControl(target: EventTarget | null): boolean`: Union of inputs, buttons, sliders, dropdowns, and interactive controls.
+  - `isModifierActive(e: KeyboardEvent): boolean`: Checks whether `metaKey`, `ctrlKey`, or `altKey` is held to prevent hotkey conflicts.
+
+#### `app/spatial/hub/SpatialCommandHub.tsx`
+- **Restored Tab / Shift+Tab Navigation**: Removed `case 'Tab'` from `handleKeyDown` which previously called `e.preventDefault()`, restoring native browser Tab focus ring navigation across all focusable elements.
+- **Native Enter/Space Activation on Hub Nodes**: Added `onFocus={() => setFocusedIndex(idx)}` and `onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); executeTransition(node); } }}` directly to the hub zone node element.
+- **Protected Interactive Controls**: Added `if (isInteractiveControl(e.target)) return;` to the window keydown listener so Enter, Space, and Arrow keys never hijack focused buttons (e.g. Back, Audio, Hub switcher) or form inputs.
+- **Synced DOM Focus on Arrow Navigation**: Arrow keys (`ArrowRight`, `ArrowDown`, `ArrowLeft`, `ArrowUp`) now call `.focus()` on the newly selected node to keep DOM focus aligned.
+- **Protected Quick Launch Numbers (1-6)**: Guarded with `if (isModifierActive(e)) return;` so browser tab switching shortcuts (e.g. `Cmd+1`–`Cmd+6`) and typing numbers into text inputs are never intercepted.
+
+#### `app/spatial/investigation/InvestigationHub.tsx`
+- **Removed Global Enter Hijacking**: Removed blanket `else if (e.key === 'Enter') { e.preventDefault(); cyberAudio.playSelect(); }` from window keydown listener, restoring native click dispatch on focused `<button>` elements (Back, Return to Hub, AI Assistant, Containment actions, Tab buttons).
+- **Protected Controls from Tab Cycling**: Guarded `ArrowLeft` / `ArrowRight` view cycling with `if (isInteractiveControl(e.target)) return;` so dropdowns (`<select>`), sliders (`<input type="range">`), and text inputs retain native arrow key manipulation.
+- **Protected Button Spacebar Activation**: In choreography skip listener, guarded Space with `if (!isInteractiveControl(e.target))` so focused buttons and links can be activated natively by Space without accidentally skipping choreography.
+- **Protected 'A'/'a' Hotkey**: Guarded with `if (isInteractiveInput(e.target) || isModifierActive(e)) return;` so `Cmd+A` / `Ctrl+A` (Select All) and typing 'a' into search boxes or text fields never trigger Contextual AI.
+- **Preserved Hierarchical Escape**: Escape continues to close sub-panels first before returning to the incident list or Hub.
+
+#### `app/spatial/investigation/IncidentListWorkspace.tsx`
+- **Card Keyboard Activation**: Added `onFocus={() => { if (!transitioningIncidentId) setSelectedIndex(index); }}` and `onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(inc); } }}` to incident cards.
+- **Protected Interactive Controls**: Added `if (isInteractiveControl(e.target)) return;` to the window keydown handler, ensuring filter buttons, sort buttons, and inputs retain native Enter and Space activation.
+
+#### `app/spatial/investigation/attack-graph/AttackGraph.tsx`
+- **Protected Controls from Graph Stealing**: Updated keydown handler to check `if (isInteractiveControl(target)) return;` before intercepting Arrow keys and Enter for graph node navigation.
+
+#### `app/spatial/investigation/replay/AttackReplay.tsx`
+- **Protected Scrubber Slider & Buttons**:
+  - `Space`: Guarded with `if (!isButtonOrAction(e.target))` so replay control buttons (Play, Pause, Step, Speed) can be activated via keyboard without double-toggling.
+  - `ArrowLeft` / `ArrowRight`: Guarded with `if (!isInteractiveControl(e.target))` so `<input type="range">` scrubber slider retains native arrow adjustments.
+  - `R` / `r`: Guarded with `if (!isModifierActive(e) && !isInteractiveControl(e.target))` so browser page reload (`Cmd+R` / `Ctrl+R`) is never intercepted.
+
+#### `app/spatial/command/CommandCenterWorkspace.tsx`
+- **Category Tile Keyboard Activation**: Added `onFocus` and `onKeyDown` on category tiles for native Enter/Space activation.
+- **Protected Controls**: Guarded window keydown listener with `if (isInteractiveControl(target)) return;`.
+
+#### `app/spatial/hunting/ThreatHuntingWorkspace.tsx`
+- **Protected Form Inputs and Selects**: Updated gesture and keydown listener to check `if (isInteractiveControl(target) || isModifierActive(e)) return;` before intercepting arrow keys or Enter for pivot navigation.
+
+#### `app/spatial-controller.ts`
+- **Made `attachKeyboard` Public and Idempotent**: Prevents duplicate listeners and supports headless test environments.
+- **Prevented Global Shortcut Hijacking**:
+  - Guarded single-letter shortcuts (`f`, `h`, `c`, `e`, `d`) with `if (isModifierActive(e)) return;` and `if (isInteractiveControl(target)) return;`, preventing `Cmd+C` (Copy), `Ctrl+C`, `Cmd+F` (Find), and typing in controls from triggering workspace switches.
+  - Restricted single-letter shortcuts to appropriate surfaces (`currentWorkspace === 'HUB'`), ensuring analysts working in Hunting, Cases, Evidence, Detection, or Investigation are never unexpectedly switched out of their active workspace.
+  - Guarded quick numbers (1-8) with `if (isModifierActive(e) || isInteractiveInput(target)) return;`.
+
+#### `scripts/test-keyboard-behavior.ts`
+- Created dedicated automated test suite testing:
+  1. Helper detection logic across inputs, textareas, native selects, ARIA sliders, comboboxes, buttons, links, and modifier keys.
+  2. Hub zone keyboard access: normal Tab/Shift+Tab traversal, Enter/Space activation on nodes and buttons, Arrow key navigation without hijacking controls, and modifier-safe quick launch.
+  3. Investigation keyboard access: native button activation on Enter/Space, ArrowLeft/Right tab switching without hijacking sliders/selects, modifier-safe AI hotkey ('A'), and button-safe choreography skip.
+  4. Attack Replay & Scrubber slider keyboard protection.
+  5. Spatial Interaction Controller shortcut hardening: Cmd+C / Ctrl+C copy preservation, dropdown typing preservation, and surface-scoped workspace navigation.
+  6. Hierarchical Escape navigation across workspaces and panels.
+
+---
+
+### 3. Verification & Test Results
+
+1. **Keyboard Behavior Test Suite (`npx tsx scripts/test-keyboard-behavior.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 34 assertions passed).
+2. **SOC Central Navigation Suite (`npx tsx scripts/test-soc-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 7/7 suites passed).
+3. **Incident Selection Navigation Suite (`npx tsx scripts/test-incident-selection-navigation.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all 4/4 suites passed).
+4. **Cases & Detection Authorization Suite (`npx tsx scripts/test-cases-detection-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, all suites passed).
+5. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+6. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext production build completed cleanly).
+7. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+

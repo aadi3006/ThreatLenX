@@ -22,6 +22,7 @@ import { useSecuritySpatial } from '../state/use-security-spatial';
 import { spatialNavStore, useSpatialNav } from '../state/use-spatial-nav';
 import { spatialTransform } from '../../spatial-transform';
 import { cyberAudio } from '../../cyber-audio';
+import { isInteractiveControl } from '../common/keyboard-nav';
 import type { Incident } from '../../core/models/incident';
 import {
   ShieldAlert,
@@ -125,8 +126,7 @@ export default function IncidentListWorkspace({
   // Keyboard navigation: ArrowUp, ArrowDown, Enter, Escape (Interruptible)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (isInteractiveControl(e.target)) return;
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -304,6 +304,15 @@ export default function IncidentListWorkspace({
                   }`}
                   onMouseEnter={() => {
                     if (!transitioningIncidentId) setSelectedIndex(index);
+                  }}
+                  onFocus={() => {
+                    if (!transitioningIncidentId) setSelectedIndex(index);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelect(inc);
+                    }
                   }}
                   onClick={() => handleSelect(inc)}
                 >

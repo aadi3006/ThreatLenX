@@ -27,6 +27,7 @@ import type { EventCategory, EventSeverity } from '../../core/models/event';
 import { securityService } from '../../core/security-service';
 import { cyberAudio } from '../../cyber-audio';
 import { spatialTransform } from '../../spatial-transform';
+import { isInteractiveControl, isInteractiveInput, isModifierActive } from '../common/keyboard-nav';
 import { convertHuntQueryToDetectionDraft } from '../../core/security/detection-engine';
 import { ThreatIntelProfile } from '../intel/ThreatIntelProfile';
 import {
@@ -965,7 +966,6 @@ export default function ThreatHuntingWorkspace({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
       // Hierarchical Escape navigation
       if (e.key === 'Escape') {
@@ -1014,7 +1014,7 @@ export default function ThreatHuntingWorkspace({
         return;
       }
 
-      if (isInput) return;
+      if (isInteractiveControl(target) || isModifierActive(e)) return;
       if (showSaveModal || showLinkModal || showCreateModal || showSavedHuntsDrawer || threatIntelTargetId || isAiOpen) return;
 
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {

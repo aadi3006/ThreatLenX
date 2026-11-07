@@ -18,6 +18,7 @@
 'use client';
 import { useRef, useEffect, useCallback } from 'react';
 import { useInvestigation } from '../InvestigationContext';
+import { isInteractiveInput, isInteractiveControl, isButtonOrAction, isModifierActive } from '../../common/keyboard-nav';
 import { Play, Pause, RotateCcw, SkipForward, SkipBack } from 'lucide-react';
 
 const STEP_TYPE_COLOR: Record<string, string> = {
@@ -65,21 +66,30 @@ export default function AttackReplay() {
   // Keyboard navigation for replay
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Don't intercept if user is typing or interacting with form inputs/sliders/selects
+      if (isInteractiveInput(e.target)) return;
 
       if (e.code === 'Space') {
-        e.preventDefault();
-        if (replay.status === 'PLAYING') replayPause();
-        else replayPlay();
+        if (!isButtonOrAction(e.target)) {
+          e.preventDefault();
+          if (replay.status === 'PLAYING') replayPause();
+          else replayPlay();
+        }
       } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        replayStepForward();
+        if (!isInteractiveControl(e.target)) {
+          e.preventDefault();
+          replayStepForward();
+        }
       } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        replayStepBack();
+        if (!isInteractiveControl(e.target)) {
+          e.preventDefault();
+          replayStepBack();
+        }
       } else if (e.key === 'r' || e.key === 'R') {
-        replayReset();
+        if (!isModifierActive(e) && !isInteractiveControl(e.target)) {
+          e.preventDefault();
+          replayReset();
+        }
       }
     };
 
