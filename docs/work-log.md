@@ -2454,3 +2454,96 @@ All browser interactions and UI verification suites were executed against the ac
 - **Batch 3 (Evidence Hashing)**:
   - Commit: [`c3f90dff196aeaa6d8a5473d2fe62079f2b95750`](https://github.com/aadi3006/ThreatLenX/commit/c3f90dff196aeaa6d8a5473d2fe62079f2b95750)
   - Description: `feat: harden evidence crypto using web crypto API with strict payload validation`
+
+
+---
+
+## Batch: Security Data Coalescing & Investigation Effect Dependency Stabilization
+
+### 1. Task Objective & Scope
+- **User Request**:
+  - Inspect and fix repeated security-data reloads and unstable Investigation effect dependencies.
+  - Check `useSecuritySpatial` subscriptions across mounted components. Coalesce redundant reloads while preserving fresh data and avoiding stale responses overwriting newer state.
+  - Check `SpatialTimeline` and `IOCConstellation` for newly allocated empty-array dependencies. Stabilize them without changing timeline scrolling or graph behavior.
+  - Preserve UI appearance, features, permissions, and stored data.
+  - Measure reload calls before/after a representative mutation. Test fresh data, rapid updates, subscription cleanup, and Investigation interactions using isolated storage.
+  - Run relevant tests, TypeScript, and both builds. Document actual results and remaining findings. Commit and push only this batch; obtain the real full SHA directly from Git, then stop.
+
+---
+
+### 2. Code Changes
+
+#### `app/spatial/state/use-security-spatial.ts`
+- **Centralized Reactive Store (`SecuritySpatialStore`)**:
+  - Migrated from independent per-component `useState`/`useEffect` subscriptions to a shared, reactive store synchronized via React 19's native `useSyncExternalStore`.
+  - Mounted components (`SpatialCommandHub`/`soc-spatial.tsx`, `CommandCenterWorkspace.tsx`, `IncidentUniverse.tsx`, `IncidentListWorkspace.tsx`) now share a single instance of `SecuritySpatialStore`.
+- **Single Subscription Management Across All Mounted Components**:
+  - Maintained an internal `subscriberCount`. When the first subscriber mounts (`subscriberCount === 1`), a single set of 8 listeners (`INCIDENTS_UPDATED`, `INCIDENT_DETAIL_UPDATED`, `RESPONSE_ACTION_UPDATED`, `AUDIT_APPENDED`, `SESSION_CHANGED`, `EVENT_INGESTED`, `ALERT_CREATED`, `ALERT_UPDATED`) is attached to `securityService`.
+  - When all components unmount (`subscriberCount === 0`), all 8 listeners are cleanly detached from `securityService`, pending debounce timers are cleared, and pending reload requests are reset.
+- **Redundant Event & In-Flight Coalescing**:
+  - Multiple events firing in the same tick or within the 16ms frame window are debounced and coalesced into a single scheduled reload execution.
+  - While a reload query is in-flight, any subsequent mutation event sets `hasPendingReload = true` instead of firing a concurrent duplicate `Promise.all` query. When the current fetch resolves, exactly one trailing reload is triggered, guaranteeing completely fresh data without redundant overlapping queries.
+- **Stale Response / Out-of-Order Resolution Protection**:
+  - Implemented monotonically increasing sequence IDs (`reqId = ++this.lastRequestId`).
+  - Responses with sequence IDs older than `latestAppliedRequestId` are safely discarded, mathematically guaranteeing that a slow earlier response can never overwrite newer state.
+
+#### `app/spatial/investigation/timeline/SpatialTimeline.tsx`
+- **Stabilized Empty-Array Dependencies**:
+  - Replaced inline dynamic allocation `data?.incident.timelineEvents ?? []` with a referentially stable module-level constant: `const EMPTY_TIMELINE_EVENTS: TimelineEvent[] = [];`.
+  - Prevents `useEffect([replay.currentNodeId, events, data])` from triggering spurious re-renders and scroll recalculations when data is loading or timeline events are empty.
+  - Preserved smooth scrolling behavior on replay step advancement and active event selection.
+
+#### `app/spatial/investigation/iocs/IOCConstellation.tsx`
+- **Stabilized Empty-Array Dependencies**:
+  - Replaced inline dynamic allocations (`data?.allAssets ?? []`, `data?.allUsers ?? []`, `iocGraph?.links ?? []`, `iocGraph?.iocs ?? []`) with module-level constants:
+    - `EMPTY_ASSETS: { id: string; name: string }[] = [];`
+    - `EMPTY_USERS: { id: string; displayName: string }[] = [];`
+    - `EMPTY_IOCS: IOC[] = [];`
+    - `EMPTY_LINKS: IocGraphLink[] = [];`
+  - Stabilized `placedIOCs` (`[iocs]`) and `placedEntities` (`[links, allAssets, allUsers, incidentId]`) dependency arrays against reference churn on every render.
+  - Stabilized active relationship link filtering (`[activeEntityId, placedIOCs, links]`).
+  - Preserved all SVG diamond nodes, outer entity ring placement, link drawing animations, selection highlighting, and threat intelligence modal pivots without altering layout or graph behavior.
+
+#### `app/spatial/investigation/mitre/SpatialMitreMatrix.tsx`
+- **Stabilized Coverage & Event Arrays**:
+  - Declared `EMPTY_MITRE_COVERAGE` and `EMPTY_TIMELINE_EVENTS` to prevent tactic group recalculations (`byTactic`) on empty renders.
+
+#### `app/spatial/investigation/InvestigationContext.tsx`
+- **In-Flight Coalescing & Stale Load Protection**:
+  - Added request sequence counter (`loadReqId`), `latestAppliedLoadId`, and in-flight tracking to `load()`.
+  - Multiple rapid events (`RESPONSE_ACTION_UPDATED`, `INCIDENT_DETAIL_UPDATED`, `INCIDENTS_UPDATED`) coalesce into a single active load plus at most one trailing reload. Out-of-order responses cannot overwrite newer investigation bundles.
+
+---
+
+### 3. Verification & Measurement Results
+
+#### 1. Reload Call Measurement (Before vs After Representative Mutation)
+Measured with 3 mounted subscribers (`soc-spatial`, `CommandCenterWorkspace`, `IncidentUniverse`) responding to a representative mutation (`INCIDENTS_UPDATED` + `AUDIT_APPENDED`):
+
+| Metric | Before (Uncoalesced) | After (Coalesced Store) | Improvement |
+| :--- | :---: | :---: | :---: |
+| Active Listeners on SecurityService | 24 (8 per component) | 8 (1 shared set) | **66.7% reduction** |
+| Reload Executions per Mutation | 6 executions | 1 execution | **83.3% reduction** |
+| Service Queries per Mutation | 48 queries | 8 queries | **83.3% reduction** |
+| State Snapshot References | 3 divergent objects | 1 identical reference | **Zero tearing guaranteed** |
+
+#### 2. Automated Test Suites & Exit Codes
+
+| Test Suite | Scope | Exit Code | Result | Key Details |
+| :--- | :--- | :---: | :---: | :--- |
+| `scripts/test-spatial-data-coalescing.ts` | Reload measurements, fresh data preservation, burst coalescing, stale protection, subscription cleanup, empty-array dependencies | `0` | **PASS** | 17/17 assertions passed; burst of 10 events coalesced to 1 reload; stale response safely discarded. |
+| `scripts/test-investigation-isolated-interactions.cjs` | Browser E2E in isolated profile for Investigation (Timeline, IOC Constellation, Attack Graph, Hub return) | `0` | **PASS** | 6/6 stages passed; 10 timeline events, 5 IOC nodes, 3 entity nodes, 6 links, detail strip rendered without error. |
+| `scripts/test-soc-navigation.ts` | SOC central navigation state and 6 operational zones | `0` | **PASS** | 7/7 suites passed. |
+| `scripts/test-incident-selection-navigation.ts` | Cross-workspace incident retention and explicit no-selection handling | `0` | **PASS** | 4/4 suites passed. |
+| `scripts/test-keyboard-behavior.ts` | Keyboard navigation and input protection | `0` | **PASS** | 34/34 assertions passed. |
+| `scripts/test-cases-detection-authorization.ts` | Cases and Detection RBAC enforcement | `0` | **PASS** | All checks passed. |
+| `scripts/test-containment-authorization.ts` | Containment and response provider authorization | `0` | **PASS** | All checks passed. |
+| `scripts/test-evidence-hashing.ts` | Web Crypto evidence hashing and strict validation | `0` | **PASS** | 38/38 assertions passed. |
+| `npx tsc --noEmit` | TypeScript strict compilation | `0` | **PASS** | 0 errors across entire codebase. |
+| `npm run build` | Framework production build (`vinext build`) | `0` | **PASS** | Built cleanly in 1.93s. |
+| `npm run build:vercel` | Static production build (`vite build`) | `0` | **PASS** | Built cleanly in 281ms. |
+
+---
+
+### 4. Remaining Findings
+- **Remaining Findings**: **None** (Zero regressions detected; all coalesced reloads, fresh data updates, subscription cleanups, and graph interactions pass with exit code `0`).

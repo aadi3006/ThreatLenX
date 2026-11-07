@@ -15,7 +15,7 @@
  */
 
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { bootstrapSecurity, securityService } from '../../core/bootstrap';
 import type { Incident, Severity } from '../../core/models/incident';
 import type { Asset, SecurityUser, IOC } from '../../core/models/entity';
@@ -144,114 +144,284 @@ function computeSpatialLayout(incidents: Incident[]): SpatialIncident[] {
   });
 }
 
+// ─── Shared Store & Coalescing Coordinator ────────────────────────────────────
+
+const INITIAL_STATE: SecuritySpatialState = {
+  isReady: false,
+  incidents: [],
+  spatialIncidents: [],
+  assets: [],
+  users: [],
+  iocs: [],
+  responseActions: [],
+  auditLogs: [],
+  events: [],
+  alerts: [],
+  snapshot: null,
+  criticalCount: 0,
+  aggregateRisk: 0,
+};
+
+export class SecuritySpatialStore {
+  private state: SecuritySpatialState = INITIAL_STATE;
+  private listeners: Set<() => void> = new Set();
+  private unsubs: (() => void)[] = [];
+  private subscriberCount = 0;
+
+  // In-flight and coalescing tracking
+  private inFlightPromise: Promise<void> | null = null;
+  private hasPendingReload = false;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Monotonically increasing sequence tokens to discard stale out-of-order responses
+  private lastRequestId = 0;
+  private latestAppliedRequestId = 0;
+
+  // Telemetry metrics for verification and observability
+  public reloadExecutionCount = 0;
+  public coalescedTriggerCount = 0;
+
+  public getState = (): SecuritySpatialState => {
+    return this.state;
+  };
+
+  public getSubscriberCount(): number {
+    return this.subscriberCount;
+  }
+
+  public subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    this.subscriberCount++;
+
+    if (this.subscriberCount === 1) {
+      // First subscriber mounted: attach single set of listeners to securityService
+      this.attachSecuritySubscriptions();
+      // Schedule initial load
+      void this.scheduleReload(true);
+    }
+
+    return () => {
+      this.listeners.delete(listener);
+      this.subscriberCount = Math.max(0, this.subscriberCount - 1);
+
+      if (this.subscriberCount === 0) {
+        // All subscribers unmounted: clean up subscriptions and cancel pending timers
+        this.detachSecuritySubscriptions();
+        if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+          this.debounceTimer = null;
+        }
+        this.hasPendingReload = false;
+      }
+    };
+  };
+
+  private notify() {
+    this.listeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (err) {
+        console.error('[SecuritySpatialStore] Listener error:', err);
+      }
+    });
+  }
+
+  private attachSecuritySubscriptions() {
+    this.detachSecuritySubscriptions();
+
+    const handleEvent = () => {
+      this.coalescedTriggerCount++;
+      void this.scheduleReload(false);
+    };
+
+    this.unsubs = [
+      securityService.on('INCIDENTS_UPDATED', handleEvent),
+      securityService.on('INCIDENT_DETAIL_UPDATED', handleEvent),
+      securityService.on('RESPONSE_ACTION_UPDATED', handleEvent),
+      securityService.on('AUDIT_APPENDED', handleEvent),
+      securityService.on('SESSION_CHANGED', handleEvent),
+      securityService.on('EVENT_INGESTED', handleEvent),
+      securityService.on('ALERT_CREATED', handleEvent),
+      securityService.on('ALERT_UPDATED', handleEvent),
+    ];
+  }
+
+  private detachSecuritySubscriptions() {
+    if (this.unsubs.length > 0) {
+      this.unsubs.forEach((fn) => {
+        try {
+          fn();
+        } catch {
+          // Ignore
+        }
+      });
+      this.unsubs = [];
+    }
+  }
+
+  /**
+   * Coalesces rapid reload requests.
+   * If immediate is true, triggers right away.
+   * If immediate is false, coalesces multiple events arriving within the debounce window (16ms).
+   */
+  public scheduleReload(immediate = false): Promise<void> {
+    if (immediate) {
+      if (this.debounceTimer) {
+        clearTimeout(this.debounceTimer);
+        this.debounceTimer = null;
+      }
+      return this.executeReload();
+    }
+
+    if (this.debounceTimer) {
+      // Already scheduled for next tick/frame, coalescing this trigger
+      return this.inFlightPromise ?? Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.debounceTimer = setTimeout(() => {
+        this.debounceTimer = null;
+        this.executeReload().then(resolve);
+      }, 16);
+    });
+  }
+
+  /**
+   * Refreshes security spatial data immediately.
+   */
+  public refresh(): Promise<void> {
+    return this.scheduleReload(true);
+  }
+
+  /**
+   * Executes the security service queries, coalescing concurrent in-flight requests
+   * and discarding stale responses that resolve out-of-order.
+   */
+  public executeReload(): Promise<void> {
+    if (this.inFlightPromise) {
+      // A reload is already in flight. Mark pending so a single trailing reload runs when it finishes.
+      this.hasPendingReload = true;
+      return this.inFlightPromise;
+    }
+
+    const currentReqId = ++this.lastRequestId;
+
+    this.inFlightPromise = (async () => {
+      try {
+        await bootstrapSecurity();
+
+        const [incidents, assets, users, iocs, responseActions, auditLogs, events, alerts] =
+          await Promise.all([
+            securityService.getIncidents(),
+            securityService.getAssets(),
+            securityService.getUsers(),
+            securityService.getIOCs(),
+            securityService.getResponseActions(),
+            securityService.getAuditLogs(),
+            securityService.getEvents({ limit: 100 }),
+            securityService.getAlerts({ limit: 100 }),
+          ]);
+
+        // STALE RESPONSE PROTECTION:
+        // If a newer reload completed while this request was in flight, discard this older result.
+        if (currentReqId < this.latestAppliedRequestId) {
+          return;
+        }
+        this.latestAppliedRequestId = currentReqId;
+        this.reloadExecutionCount++;
+
+        const spatialIncidents = computeSpatialLayout(incidents);
+        const criticalCount = incidents.filter((i) => i.severity === 'CRITICAL').length;
+        const aggregateRisk =
+          incidents.length > 0
+            ? incidents.reduce((sum, i) => sum + i.riskScore, 0) / incidents.length
+            : 0;
+
+        const snapshot = buildSecurityOperationsSnapshot(
+          incidents,
+          assets,
+          iocs,
+          responseActions,
+          auditLogs,
+          events,
+          alerts
+        );
+
+        this.state = {
+          isReady: true,
+          incidents,
+          spatialIncidents,
+          assets,
+          users,
+          iocs,
+          responseActions,
+          auditLogs,
+          events,
+          alerts,
+          snapshot,
+          criticalCount,
+          aggregateRisk,
+        };
+
+        this.notify();
+      } catch (err) {
+        console.error('[useSecuritySpatial] load failed:', (err as Error).message ?? err);
+      } finally {
+        this.inFlightPromise = null;
+        if (this.hasPendingReload) {
+          this.hasPendingReload = false;
+          // Trigger the coalesced trailing reload to ensure we have the absolute latest state
+          void this.executeReload();
+        }
+      }
+    })();
+
+    return this.inFlightPromise;
+  }
+
+  /**
+   * Test-only helper to reset state between isolated test runs.
+   */
+  public _resetForTest() {
+    this.detachSecuritySubscriptions();
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.state = { ...INITIAL_STATE };
+    this.listeners.clear();
+    this.subscriberCount = 0;
+    this.inFlightPromise = null;
+    this.hasPendingReload = false;
+    this.lastRequestId = 0;
+    this.latestAppliedRequestId = 0;
+    this.reloadExecutionCount = 0;
+    this.coalescedTriggerCount = 0;
+  }
+}
+
+export const securitySpatialStore = new SecuritySpatialStore();
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSecuritySpatial(): SecuritySpatialState & {
   refresh: () => void;
   getFocusedIncident: (id: string | null) => Incident | null;
 } {
-  const [state, setState] = useState<SecuritySpatialState>({
-    isReady: false,
-    incidents: [],
-    spatialIncidents: [],
-    assets: [],
-    users: [],
-    iocs: [],
-    responseActions: [],
-    auditLogs: [],
-    events: [],
-    alerts: [],
-    snapshot: null,
-    criticalCount: 0,
-    aggregateRisk: 0,
-  });
+  const state = useSyncExternalStore(
+    securitySpatialStore.subscribe,
+    securitySpatialStore.getState,
+    securitySpatialStore.getState
+  );
 
-  const incidentsRef = useRef<Incident[]>([]);
-
-  const loadData = useCallback(async () => {
-    try {
-      const [incidents, assets, users, iocs, responseActions, auditLogs, events, alerts] = await Promise.all([
-        securityService.getIncidents(),
-        securityService.getAssets(),
-        securityService.getUsers(),
-        securityService.getIOCs(),
-        securityService.getResponseActions(),
-        securityService.getAuditLogs(),
-        securityService.getEvents({ limit: 100 }),
-        securityService.getAlerts({ limit: 100 }),
-      ]);
-
-      incidentsRef.current = incidents;
-
-      const spatialIncidents = computeSpatialLayout(incidents);
-      const criticalCount = incidents.filter((i) => i.severity === 'CRITICAL').length;
-      const aggregateRisk = incidents.length > 0
-        ? incidents.reduce((sum, i) => sum + i.riskScore, 0) / incidents.length
-        : 0;
-
-      const snapshot = buildSecurityOperationsSnapshot(
-        incidents,
-        assets,
-        iocs,
-        responseActions,
-        auditLogs,
-        events,
-        alerts
-      );
-
-      setState({
-        isReady: true,
-        incidents,
-        spatialIncidents,
-        assets,
-        users,
-        iocs,
-        responseActions,
-        auditLogs,
-        events,
-        alerts,
-        snapshot,
-        criticalCount,
-        aggregateRisk,
-      });
-    } catch (err) {
-      console.error('[useSecuritySpatial] load failed:', (err as Error).message ?? err);
-    }
+  const refresh = useCallback(() => {
+    void securitySpatialStore.refresh();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    bootstrapSecurity()
-      .then(() => {
-        if (!cancelled) return loadData();
-      })
-      .catch((err) => {
-        console.error('[useSecuritySpatial] bootstrap failed:', err);
-      });
-
-    // Subscribe to SecurityService events to keep state fresh
-    const unsubs = [
-      securityService.on('INCIDENTS_UPDATED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('INCIDENT_DETAIL_UPDATED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('RESPONSE_ACTION_UPDATED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('AUDIT_APPENDED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('SESSION_CHANGED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('EVENT_INGESTED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('ALERT_CREATED', () => { if (!cancelled) void loadData(); }),
-      securityService.on('ALERT_UPDATED', () => { if (!cancelled) void loadData(); }),
-    ];
-
-    return () => {
-      cancelled = true;
-      unsubs.forEach((fn) => fn());
-    };
-  }, [loadData]);
 
   const getFocusedIncident = useCallback((id: string | null): Incident | null => {
     if (!id) return null;
-    return incidentsRef.current.find((i) => i.id === id) ?? null;
+    return securitySpatialStore.getState().incidents.find((i) => i.id === id) ?? null;
   }, []);
 
-  return { ...state, refresh: loadData, getFocusedIncident };
+  return { ...state, refresh, getFocusedIncident };
 }

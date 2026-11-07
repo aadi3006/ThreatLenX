@@ -111,6 +111,11 @@ function placeEntities(
   return entities;
 }
 
+const EMPTY_ASSETS: { id: string; name: string }[] = [];
+const EMPTY_USERS: { id: string; displayName: string }[] = [];
+const EMPTY_IOCS: IOC[] = [];
+const EMPTY_LINKS: IocGraphLink[] = [];
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function IOCConstellation() {
@@ -119,25 +124,27 @@ export default function IOCConstellation() {
   const [selectedIntelIocId, setSelectedIntelIocId] = useState<string | null>(null);
 
   const iocGraph  = data?.iocGraph;
-  const allAssets = data?.allAssets ?? [];
-  const allUsers  = data?.allUsers  ?? [];
+  const allAssets = data?.allAssets ?? EMPTY_ASSETS;
+  const allUsers  = data?.allUsers  ?? EMPTY_USERS;
+  const incidentId = data?.incidentId ?? '';
+
+  const iocs  = iocGraph?.iocs ?? EMPTY_IOCS;
+  const links = iocGraph?.links ?? EMPTY_LINKS;
 
   const placedIOCs = useMemo(
-    () => placeIOCs(iocGraph?.iocs ?? []),
-    [iocGraph]
+    () => placeIOCs(iocs),
+    [iocs]
   );
 
   const placedEntities = useMemo(
     () => placeEntities(
-      iocGraph?.links ?? [],
+      links,
       allAssets,
       allUsers,
-      data?.incidentId ?? '',
+      incidentId,
     ),
-    [iocGraph, allAssets, allUsers, data]
+    [links, allAssets, allUsers, incidentId]
   );
-
-  const links = iocGraph?.links ?? [];
 
   // Active entity for relationship highlighting (selection takes precedence over hover)
   const activeEntityId = selectedEntity?.id || hoveredId;

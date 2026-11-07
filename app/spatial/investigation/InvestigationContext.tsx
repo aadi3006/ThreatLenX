@@ -159,78 +159,101 @@ export function InvestigationProvider({ incidentId, children }: Props) {
       replayTimerRef.current = null;
     }
 
-    async function load(isInitial = true) {
-      try {
-        if (isInitial) setIsLoading(true);
-        const [detail, attackGraph, systemRadar, iocGraph, mitreCoverage, allAssets, allUsers, allIOCs] =
-          await Promise.all([
-            securityService.getIncidentById(incidentId),
-            securityService.getAttackGraph(incidentId),
-            securityService.getSystemRadar(incidentId),
-            securityService.getIocConstellation(incidentId),
-            securityService.getMitreMatrix(),
-            securityService.getAssets(),
-            securityService.getUsers(),
-            securityService.getIOCs(),
-          ]);
+    let loadReqId = 0;
+    let latestAppliedLoadId = 0;
+    let inFlightLoad: Promise<void> | null = null;
+    let hasPendingReload = false;
 
-        if (cancelled) return;
-
-        if (!detail) {
-          setError(`Incident ${incidentId} not found.`);
-          setIsLoading(false);
-          return;
-        }
-
-        // Use empty graph if none returned
-        const graph: AttackGraph = attackGraph ?? {
-          incidentId,
-          rootNodeId: '',
-          nodes: [],
-          edges: [],
-          attackPathNodeIds: [],
-        };
-
-        const attackPath = reconstructAttackPath(incidentId, graph);
-        replayDataRef.current = attackPath;
-
-        const bundle: InvestigationData = {
-          incidentId,
-          incident: detail,
-          attackGraph: graph,
-          systemRadar: systemRadar ?? null,
-          iocGraph: iocGraph ?? null,
-          mitreCoverage: mitreCoverage.filter(
-            (c) => detail.mitreTechniques.includes(c.technique.id)
-          ),
-          allAssets,
-          allUsers,
-          allIOCs,
-          attackPath,
-        };
-
-        setData(bundle);
-        if (isInitial) {
-          setReplay(makeIdleReplay(attackPath.steps.length));
-        }
-      } catch (err) {
-        if (!cancelled) setError(String(err));
-      } finally {
-        if (!cancelled && isInitial) setIsLoading(false);
+    function scheduleInvestigationReload() {
+      if (inFlightLoad) {
+        hasPendingReload = true;
+        return;
       }
+      void load(false);
+    }
+
+    async function load(isInitial = true) {
+      if (inFlightLoad) {
+        hasPendingReload = true;
+        return inFlightLoad;
+      }
+
+      const reqId = ++loadReqId;
+      inFlightLoad = (async () => {
+        try {
+          if (isInitial) setIsLoading(true);
+          const [detail, attackGraph, systemRadar, iocGraph, mitreCoverage, allAssets, allUsers, allIOCs] =
+            await Promise.all([
+              securityService.getIncidentById(incidentId),
+              securityService.getAttackGraph(incidentId),
+              securityService.getSystemRadar(incidentId),
+              securityService.getIocConstellation(incidentId),
+              securityService.getMitreMatrix(),
+              securityService.getAssets(),
+              securityService.getUsers(),
+              securityService.getIOCs(),
+            ]);
+
+          if (cancelled || reqId < latestAppliedLoadId) return;
+          latestAppliedLoadId = reqId;
+
+          if (!detail) {
+            setError(`Incident ${incidentId} not found.`);
+            setIsLoading(false);
+            return;
+          }
+
+          // Use empty graph if none returned
+          const graph: AttackGraph = attackGraph ?? {
+            incidentId,
+            rootNodeId: '',
+            nodes: [],
+            edges: [],
+            attackPathNodeIds: [],
+          };
+
+          const attackPath = reconstructAttackPath(incidentId, graph);
+          replayDataRef.current = attackPath;
+
+          const bundle: InvestigationData = {
+            incidentId,
+            incident: detail,
+            attackGraph: graph,
+            systemRadar: systemRadar ?? null,
+            iocGraph: iocGraph ?? null,
+            mitreCoverage: mitreCoverage.filter(
+              (c) => detail.mitreTechniques.includes(c.technique.id)
+            ),
+            allAssets,
+            allUsers,
+            allIOCs,
+            attackPath,
+          };
+
+          setData(bundle);
+          if (isInitial) {
+            setReplay(makeIdleReplay(attackPath.steps.length));
+          }
+        } catch (err) {
+          if (!cancelled && reqId >= latestAppliedLoadId) setError(String(err));
+        } finally {
+          inFlightLoad = null;
+          if (!cancelled && isInitial && reqId >= latestAppliedLoadId) setIsLoading(false);
+          if (!cancelled && hasPendingReload) {
+            hasPendingReload = false;
+            void load(false);
+          }
+        }
+      })();
+
+      return inFlightLoad;
     }
 
     void load(true);
 
-    const unsubAction = securityService.subscribe('RESPONSE_ACTION_UPDATED', () => {
-      void load(false);
-    });
-    const unsubDetail = securityService.subscribe('INCIDENT_DETAIL_UPDATED', () => {
-      void load(false);
-    });
-    const unsubIncidents = securityService.subscribe('INCIDENTS_UPDATED', () => {
-      void load(false);
-    });
+    const unsubAction = securityService.subscribe('RESPONSE_ACTION_UPDATED', scheduleInvestigationReload);
+    const unsubDetail = securityService.subscribe('INCIDENT_DETAIL_UPDATED', scheduleInvestigationReload);
+    const unsubIncidents = securityService.subscribe('INCIDENTS_UPDATED', scheduleInvestigationReload);
 
     return () => {
       cancelled = true;

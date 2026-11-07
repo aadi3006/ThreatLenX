@@ -126,12 +126,15 @@ function TechniqueCard({
   );
 }
 
+const EMPTY_MITRE_COVERAGE: MitreTechniqueCoverage[] = [];
+const EMPTY_TIMELINE_EVENTS: TimelineEvent[] = [];
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SpatialMitreMatrix() {
   const { data, selectedEntity, setSelectedEntity, replay } = useInvestigation();
-  const coverage: MitreTechniqueCoverage[] = data?.mitreCoverage ?? [];
-  const timelineEvents = data?.incident.timelineEvents ?? [];
+  const coverage: MitreTechniqueCoverage[] = data?.mitreCoverage ?? EMPTY_MITRE_COVERAGE;
+  const timelineEvents = data?.incident.timelineEvents ?? EMPTY_TIMELINE_EVENTS;
 
   // Group by tactic
   const byTactic = useMemo(() => {

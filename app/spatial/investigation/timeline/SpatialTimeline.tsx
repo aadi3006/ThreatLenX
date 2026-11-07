@@ -123,6 +123,8 @@ function TimelineEventRow({
   );
 }
 
+const EMPTY_TIMELINE_EVENTS: TimelineEvent[] = [];
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SpatialTimeline() {
@@ -130,7 +132,7 @@ export default function SpatialTimeline() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs      = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const events: TimelineEvent[] = data?.incident.timelineEvents ?? [];
+  const events: TimelineEvent[] = data?.incident.timelineEvents ?? EMPTY_TIMELINE_EVENTS;
 
   // Scroll active replay event into view
   useEffect(() => {
