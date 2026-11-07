@@ -13,6 +13,7 @@
 'use client';
 import { useCallback, useMemo } from 'react';
 import { useInvestigation } from '../InvestigationContext';
+import { EMPTY_MITRE_COVERAGE, EMPTY_TIMELINE_EVENTS } from '../investigation-state';
 import type { MitreTechniqueCoverage } from '../../../core/models/mitre';
 import type { TimelineEvent } from '../../../core/models/incident';
 
@@ -125,9 +126,6 @@ function TechniqueCard({
     </div>
   );
 }
-
-const EMPTY_MITRE_COVERAGE: MitreTechniqueCoverage[] = [];
-const EMPTY_TIMELINE_EVENTS: TimelineEvent[] = [];
 
 // ─── Main component ───────────────────────────────────────────────────────────
 

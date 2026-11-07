@@ -13,6 +13,7 @@
 'use client';
 import { useCallback, useMemo, useState } from 'react';
 import { useInvestigation } from '../InvestigationContext';
+import { EMPTY_ASSETS, EMPTY_USERS, EMPTY_IOCS, EMPTY_LINKS } from '../investigation-state';
 import type { IOC } from '../../../core/models/entity';
 import type { IocGraphLink } from '../../../core/models/spatial-structures';
 import { ThreatIntelProfile } from '../../intel/ThreatIntelProfile';
@@ -28,93 +29,18 @@ const IOC_TYPE_COLOR: Record<string, string> = {
   REGISTRY_KEY: '#7b8ab8',
 };
 
-const W = 560;
-const H = 420;
-const CX = W / 2;
-const CY = H / 2;
+import {
+  IOC_CANVAS_WIDTH as W,
+  IOC_CANVAS_HEIGHT as H,
+  IOC_CANVAS_CX as CX,
+  IOC_CANVAS_CY as CY,
+  placeIOCs,
+  placeEntities,
+  type PlacedIOC,
+  type PlacedEntity,
+} from './ioc-layout';
 
-interface PlacedIOC {
-  ioc: IOC;
-  x: number;
-  y: number;
-  index: number;
-}
-
-interface PlacedEntity {
-  id: string;
-  label: string;
-  type: 'ASSET' | 'USER' | 'INCIDENT';
-  x: number;
-  y: number;
-  color: string;
-  index: number;
-}
-
-function placeIOCs(iocs: IOC[]): PlacedIOC[] {
-  return iocs.map((ioc, i) => {
-    const angle = (i / Math.max(iocs.length, 1)) * 2 * Math.PI - Math.PI / 2;
-    return {
-      ioc,
-      x: CX + 120 * Math.cos(angle),
-      y: CY + 90  * Math.sin(angle),
-      index: i,
-    };
-  });
-}
-
-function placeEntities(
-  links: IocGraphLink[],
-  assets: { id: string; name: string }[],
-  users:  { id: string; displayName: string }[],
-  incidentId: string,
-): PlacedEntity[] {
-  const seen = new Set<string>();
-  const entities: PlacedEntity[] = [];
-
-  links.forEach((link) => {
-    if (seen.has(link.targetEntityId)) return;
-    seen.add(link.targetEntityId);
-
-    let label = link.targetEntityId;
-    let color = '#7b8ab8';
-
-    if (link.targetType === 'ASSET') {
-      const a = assets.find((a) => a.id === link.targetEntityId);
-      label = a?.name ?? link.targetEntityId;
-      color = '#00f0ff';
-    } else if (link.targetType === 'USER') {
-      const u = users.find((u) => u.id === link.targetEntityId);
-      label = u?.displayName ?? link.targetEntityId;
-      color = '#ffb700';
-    } else if (link.targetType === 'INCIDENT') {
-      label = incidentId.toUpperCase().replace('INCIDENT-', 'INC-');
-      color = '#ff2a2a';
-    }
-
-    // Place entities in an outer ring
-    const totalUnique = [...new Set(links.map((l) => l.targetEntityId))].length;
-    const idx = [...seen].indexOf(link.targetEntityId);
-    const angle = (idx / Math.max(totalUnique, 1)) * 2 * Math.PI - Math.PI / 2;
-    const r = 190;
-
-    entities.push({
-      id: link.targetEntityId,
-      label,
-      type: link.targetType,
-      x: CX + r * Math.cos(angle),
-      y: CY + r * Math.sin(angle) * 0.75,
-      color,
-      index: idx,
-    });
-  });
-
-  return entities;
-}
-
-const EMPTY_ASSETS: { id: string; name: string }[] = [];
-const EMPTY_USERS: { id: string; displayName: string }[] = [];
-const EMPTY_IOCS: IOC[] = [];
-const EMPTY_LINKS: IocGraphLink[] = [];
+export { placeIOCs, placeEntities, type PlacedIOC, type PlacedEntity };
 
 // ─── Main component ───────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@
 'use client';
 import { useCallback, useEffect, useRef } from 'react';
 import { useInvestigation } from '../InvestigationContext';
+import { EMPTY_TIMELINE_EVENTS } from '../investigation-state';
 import type { TimelineEvent } from '../../../core/models/incident';
 
 const STAGE_COLOR: Record<string, string> = {
@@ -122,8 +123,6 @@ function TimelineEventRow({
     </div>
   );
 }
-
-const EMPTY_TIMELINE_EVENTS: TimelineEvent[] = [];
 
 // ─── Main component ───────────────────────────────────────────────────────────
 

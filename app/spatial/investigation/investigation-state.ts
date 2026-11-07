@@ -11,9 +11,18 @@
 
 import type { IncidentDetail, TimelineEvent } from '../../core/models/incident';
 import type { AttackGraph, AttackGraphNode, AttackGraphEdge } from '../../core/models/attack-graph';
-import type { SystemRadarData, IocGraphData } from '../../core/models/spatial-structures';
+import type { SystemRadarData, IocGraphData, IocGraphLink } from '../../core/models/spatial-structures';
 import type { MitreTechniqueCoverage } from '../../core/models/mitre';
 import type { Asset, SecurityUser, IOC } from '../../core/models/entity';
+
+// ─── Stable Empty Arrays for Effect & Memo Dependencies ───────────────────────
+
+export const EMPTY_TIMELINE_EVENTS: TimelineEvent[] = [];
+export const EMPTY_ASSETS: { id: string; name: string }[] = [];
+export const EMPTY_USERS: { id: string; displayName: string }[] = [];
+export const EMPTY_IOCS: IOC[] = [];
+export const EMPTY_LINKS: IocGraphLink[] = [];
+export const EMPTY_MITRE_COVERAGE: MitreTechniqueCoverage[] = [];
 
 // ─── Investigation view modes ─────────────────────────────────────────────────
 
