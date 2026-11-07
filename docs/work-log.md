@@ -1852,3 +1852,46 @@ To initiate cleanup systematically with **zero runtime risk**, **zero behavioral
    - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly).
 6. **Static / Vercel Build (`npm run build:vercel`)**:
    - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).
+
+## [2026-11-07] Containment Provider Authorization Bypass Closure & Strict Session Derivation
+
+### 1. Overview & Objectives
+- Closed the containment provider authorization bypass in `LocalProvider`.
+- Enforced strict session derivation: authorization role and audit identity are derived authoritatively from the active session (`session.role` and `session.username`). Caller-supplied `actor` and `actorRole` arguments are prohibited from overriding session context.
+- Added strict verification denying unauthenticated calls with supplied `PLATFORM_ADMIN` role, denying `L1_ANALYST` calls attempting role escalation via supplied `PLATFORM_ADMIN` argument, and denying spoofed audit actor identities before any database, model, or audit mutations.
+- Identified that interactive containment operations strictly run within authenticated sessions and that automated operations must use explicit trusted paths rather than arbitrary role arguments.
+
+---
+
+### 2. Implementation Summary
+
+#### `app/core/providers/local-provider.ts`
+- **Strict Session Derivation & Anti-Spoofing Guards**:
+  - `requestResponseAction`: Requires active session; rejects spoofed `actor` mismatches (`actor !== session.username`); derives `role = session.role` and `requestActor = session.username`.
+  - `approveResponseAction`: Requires active session; rejects spoofed `approver` mismatches (`approver !== session.username`); derives `role = session.role` and `approverActor = session.username`.
+  - `rejectResponseAction`: Requires active session; rejects spoofed `rejector` mismatches (`rejector !== session.username`); derives `role = session.role` and `rejectorActor = session.username`.
+  - `cancelResponseAction`: Requires active session; rejects spoofed `canceller` mismatches (`canceller !== session.username`); derives `role = session.role` and `cancellerActor = session.username`.
+  - `executeResponseAction`: Requires active session; rejects spoofed `actor` mismatches (`actor !== session.username`); derives `role = session.role` and `executorActor = session.username`.
+  - `dryRunResponseAction`: Requires active session; rejects spoofed `actor` mismatches; derives `role = session.role` and `dryRunActor = session.username`.
+  - `rollbackResponseAction`: Requires active session; rejects spoofed `actor` mismatches; derives `role = session.role` and `rollbackActor = session.username`.
+  - `acceptAiActionProposal` & `rejectAiActionProposal`: Require active session; reject spoofed `actor` mismatches; derive role and username strictly from session.
+
+#### `scripts/test-containment-authorization.ts`
+- **Extended Test Suite with Denial Verification Before Mutations**:
+  - **No session plus supplied PLATFORM_ADMIN role**: Calling `provider.requestResponseAction` and `provider.executeResponseAction` without a session while passing `PLATFORM_ADMIN` is denied with `Operation requires an active session` (0 actions, 0 audits created).
+  - **L1 session plus supplied PLATFORM_ADMIN role**: Calling `provider.requestResponseAction` and `provider.executeResponseAction` under an `L1_ANALYST` session while passing `PLATFORM_ADMIN` is denied because role is derived authoritatively from session (`Role "L1_ANALYST" cannot request response actions` / lacks `SOAR_EXECUTE`) (0 mutations).
+  - **Spoofed audit actor identity**: Calling `provider.requestResponseAction` under `analyst2` while passing `actor: 'spoofed_superadmin'` is denied with `Spoofed audit actor identity` (0 mutations). Calling `provider.approveResponseAction` under `manager` while passing `approver: 'spoofed_executive'` is denied with `Spoofed audit actor identity` (0 mutations).
+  - **L2 session plus supplied PLATFORM_ADMIN on approval**: Calling `provider.approveResponseAction` under `analyst2` with supplied `PLATFORM_ADMIN` is denied (0 mutations).
+
+---
+
+### 3. Verification & Test Results
+
+1. **Containment Authorization Suite (`npx tsx scripts/test-containment-authorization.ts`)**:
+   - **Exit Code**: `0` (**PASS**, 68 assertions passed cleanly).
+2. **TypeScript Compilation (`npx tsc --noEmit`)**:
+   - **Exit Code**: `0` (**PASS**, 0 errors).
+3. **Framework Production Build (`npm run build`)**:
+   - **Exit Code**: `0` (**PASS**, Vinext build completed cleanly).
+4. **Static / Vercel Build (`npm run build:vercel`)**:
+   - **Exit Code**: `0` (**PASS**, Vite production build completed cleanly).

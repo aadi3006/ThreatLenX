@@ -2093,6 +2093,14 @@ export class LocalProvider implements ISecurityProvider {
   }
 
   // ─── Response Actions & State Machine ───────────────────────────────────────
+  // Note on Authorization & Audit Identity:
+  // Interactive containment/response operations strictly require an active authenticated session.
+  // Authorization and audit identity are derived directly from that session (session.role, session.username).
+  // Caller-supplied actor/role arguments cannot override the session; any attempt to supply a spoofed
+  // actor identity that mismatches the active session is denied before mutations.
+  // If a real automated caller requires a separate trusted path in the future, it must use an explicit
+  // trusted internal mechanism (e.g., cryptographic service token or designated internal API),
+  // as an arbitrary role argument is insufficient.
 
   async requestResponseAction(
     action: Omit<ResponseAction, 'id' | 'status' | 'requestedAt' | 'requestedBy'>,
@@ -2100,13 +2108,17 @@ export class LocalProvider implements ISecurityProvider {
     actorRole?: RoleId
   ): Promise<ResponseAction> {
     const session = this.getCurrentSession();
-    if (!session && !actorRole) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const role = actorRole ?? session?.role;
-    const requestActor = actor || session?.username || 'SYSTEM';
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    // Authorization and audit identity are derived strictly from active session; caller arguments must not override it.
+    const role = session.role;
+    const requestActor = session.username;
 
-    if (!role || !canRequestContainment(role)) {
+    if (!canRequestContainment(role)) {
       throw new Error(`Unauthorized: Role "${role}" cannot request response actions`);
     }
 
@@ -2145,13 +2157,16 @@ export class LocalProvider implements ISecurityProvider {
     approverRole?: RoleId
   ): Promise<ResponseAction> {
     const session = this.getCurrentSession();
-    if (!session && !approverRole) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const role = approverRole ?? session?.role;
-    const approverActor = approver || session?.username || 'SYSTEM';
+    if (approver && approver !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${approver}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const approverActor = session.username;
 
-    if (!role || !canApproveContainment(role)) {
+    if (!canApproveContainment(role)) {
       throw new Error(`Unauthorized: Role "${role}" cannot approve response actions`);
     }
 
@@ -2193,13 +2208,16 @@ export class LocalProvider implements ISecurityProvider {
     rejectorRole?: RoleId
   ): Promise<ResponseAction> {
     const session = this.getCurrentSession();
-    if (!session && !rejectorRole) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const role = rejectorRole ?? session?.role;
-    const rejectorActor = rejector || session?.username || 'SYSTEM';
+    if (rejector && rejector !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${rejector}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const rejectorActor = session.username;
 
-    if (!role || !canApproveContainment(role)) {
+    if (!canApproveContainment(role)) {
       throw new Error(`Unauthorized: Role "${role}" cannot reject response actions`);
     }
 
@@ -2236,7 +2254,12 @@ export class LocalProvider implements ISecurityProvider {
     if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
+    if (canceller && canceller !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${canceller}" does not match active session "${session.username}".`);
+    }
     const role = session.role;
+    const cancellerActor = session.username;
+
     if (!canRequestContainment(role) && !canApproveContainment(role)) {
       throw new Error(`Unauthorized: Role "${role}" cannot cancel response actions`);
     }
@@ -2246,12 +2269,12 @@ export class LocalProvider implements ISecurityProvider {
 
     const previousState = action.status;
     action.status             = 'CANCELLED';
-    action.cancelledBy        = canceller || session.username;
+    action.cancelledBy        = cancellerActor;
     action.cancelledAt        = new Date().toISOString();
     action.cancellationReason = reason ?? 'Cancelled by analyst';
 
     const auditEntry = this._buildAudit({
-      actor: canceller || session.username,
+      actor: cancellerActor,
       actorRole: role,
       action: 'CONTAINMENT_CANCELLED',
       target: actionId,
@@ -2275,14 +2298,17 @@ export class LocalProvider implements ISecurityProvider {
     actorRole?: RoleId
   ): Promise<ResponseAction> {
     const session = this.getCurrentSession();
-    if (!session && !actorRole) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const role = actorRole ?? session?.role;
-    const executorActor = actor || session?.username || 'SYSTEM';
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const executorActor = session.username;
 
     // 1. RBAC Check before any lookup, validation, or mutation
-    if (!role || !canExecuteSOAR(role)) {
+    if (!canExecuteSOAR(role)) {
       throw new Error(`Unauthorized: Role "${role}" does not have SOAR_EXECUTE permission`);
     }
 
@@ -2402,13 +2428,16 @@ export class LocalProvider implements ISecurityProvider {
     actorRole?: RoleId
   ): Promise<{ action: ResponseAction; wouldModify: boolean; expectedStateChange: string }> {
     const session = this.getCurrentSession();
-    if (!session && !actorRole) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const role = actorRole ?? session?.role;
-    const dryRunActor = actor || session?.username || 'SYSTEM';
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const dryRunActor = session.username;
 
-    if (!role || (!canRequestContainment(role) && !canExecuteSOAR(role))) {
+    if (!canRequestContainment(role) && !canExecuteSOAR(role)) {
       throw new Error(`Unauthorized: Role "${role}" does not have permission to simulate response actions`);
     }
 
@@ -2465,13 +2494,16 @@ export class LocalProvider implements ISecurityProvider {
     actorRole?: RoleId
   ): Promise<ResponseAction> {
     const session = this.getCurrentSession();
-    if (!session && !actorRole) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const role = actorRole ?? session?.role;
-    const rollbackActor = actor || session?.username || 'SYSTEM';
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const role = session.role;
+    const rollbackActor = session.username;
 
-    if (!role || !canExecuteSOAR(role)) {
+    if (!canExecuteSOAR(role)) {
       throw new Error(`Unauthorized: Role "${role}" does not have SOAR_EXECUTE permission to perform rollback`);
     }
 
@@ -6364,14 +6396,17 @@ export class LocalProvider implements ISecurityProvider {
   async acceptAiActionProposal(
     proposalId: string,
     actor?: string,
-    role?: RoleId
+    _role?: RoleId
   ): Promise<{ proposal: AIActionProposal; executionResult?: unknown }> {
     const session = this.getCurrentSession();
-    if (!session && !role) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const resolvedRole = role ?? session?.role;
-    const resolvedActor = actor || session?.username || 'SYSTEM';
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const resolvedRole = session.role;
+    const resolvedActor = session.username;
 
     const proposal = this._aiActionProposals.find((p) => p.proposalId === proposalId);
     if (!proposal) {
@@ -6381,7 +6416,7 @@ export class LocalProvider implements ISecurityProvider {
       throw new Error(`Cannot accept proposal in status '${proposal.status}' (must be 'PROPOSED')`);
     }
 
-    if (!resolvedRole || !canProposeResponseAction(resolvedRole)) {
+    if (!canProposeResponseAction(resolvedRole)) {
       throw new Error(`Unauthorized: Role "${resolvedRole}" cannot accept AI response proposals`);
     }
 
@@ -6476,15 +6511,18 @@ export class LocalProvider implements ISecurityProvider {
   async rejectAiActionProposal(
     proposalId: string,
     actor?: string,
-    role?: RoleId,
+    _role?: RoleId,
     reason?: string
   ): Promise<AIActionProposal> {
     const session = this.getCurrentSession();
-    if (!session && !role) {
+    if (!session) {
       throw new Error('Unauthorized: Operation requires an active session.');
     }
-    const resolvedRole = role ?? session?.role;
-    const resolvedActor = actor || session?.username || 'SYSTEM';
+    if (actor && actor !== session.username) {
+      throw new Error(`Unauthorized: Spoofed audit actor identity "${actor}" does not match active session "${session.username}".`);
+    }
+    const resolvedRole = session.role;
+    const resolvedActor = session.username;
 
     const proposal = this._aiActionProposals.find((p) => p.proposalId === proposalId);
     if (!proposal) {
@@ -6494,7 +6532,7 @@ export class LocalProvider implements ISecurityProvider {
       throw new Error(`Cannot reject proposal in status '${proposal.status}' (must be 'PROPOSED')`);
     }
 
-    if (!resolvedRole || !canProposeResponseAction(resolvedRole)) {
+    if (!canProposeResponseAction(resolvedRole)) {
       throw new Error(`Unauthorized: Role "${resolvedRole}" cannot reject AI response proposals`);
     }
 

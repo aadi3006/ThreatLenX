@@ -313,6 +313,28 @@ try {
 }
 assert(errProvDry, 'LocalProvider.dryRunResponseAction denied without session/role');
 
+// 3.13 LocalProvider denied when no session is present even if caller passes PLATFORM_ADMIN role
+let errNoSessionSuppliedAdmin = false;
+try {
+  await provider.requestResponseAction(sampleActionInput, 'attacker', 'PLATFORM_ADMIN');
+} catch (err: any) {
+  errNoSessionSuppliedAdmin = true;
+  assert(err.message.includes('Operation requires an active session'), 'LocalProvider rejects unauthenticated call with supplied PLATFORM_ADMIN');
+}
+assert(errNoSessionSuppliedAdmin, 'No session + supplied PLATFORM_ADMIN role denied before mutation');
+assert((await provider.getResponseActions('incident-001')).length === baselineActions, '0 actions created');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created');
+
+let errNoSessionExecAdmin = false;
+try {
+  await provider.executeResponseAction('act-fake', 'attacker', 'PLATFORM_ADMIN');
+} catch (err: any) {
+  errNoSessionExecAdmin = true;
+  assert(err.message.includes('Operation requires an active session'), 'LocalProvider.executeResponseAction rejects unauthenticated call with supplied PLATFORM_ADMIN');
+}
+assert(errNoSessionExecAdmin, 'Execute denied without session even with supplied PLATFORM_ADMIN');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created');
+
 // Verify zero mutations across all missing session calls
 assert((await provider.getResponseActions('incident-001')).length === baselineActions, 'Actions remain at baseline');
 assert((await provider.getAuditLogs()).length === baselineAudits, 'Audits remain at baseline');
@@ -333,6 +355,53 @@ try {
 }
 assert(errL1Req, 'L1_ANALYST blocked from requesting response action');
 assert((await provider.getResponseActions('incident-001')).length === baselineActions, '0 actions created');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created');
+
+// 4.1b L1 session plus supplied PLATFORM_ADMIN role is denied (caller-supplied role must not override session)
+let errL1SuppliedAdmin = false;
+try {
+  await provider.requestResponseAction(sampleActionInput, 'analyst1', 'PLATFORM_ADMIN');
+} catch (err: any) {
+  errL1SuppliedAdmin = true;
+  assert(err.message.includes('cannot request response actions'), 'L1 session cannot request containment even if caller passes PLATFORM_ADMIN');
+}
+assert(errL1SuppliedAdmin, 'L1 session + supplied PLATFORM_ADMIN role denied before mutation');
+assert((await provider.getResponseActions('incident-001')).length === baselineActions, '0 actions created when L1 supplies PLATFORM_ADMIN');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created when L1 supplies PLATFORM_ADMIN');
+
+let errL1ExecSuppliedAdmin = false;
+try {
+  await provider.executeResponseAction('act-fake', 'analyst1', 'PLATFORM_ADMIN');
+} catch (err: any) {
+  errL1ExecSuppliedAdmin = true;
+  assert(err.message.includes('SOAR_EXECUTE'), 'L1 session cannot execute SOAR even if caller passes PLATFORM_ADMIN');
+}
+assert(errL1ExecSuppliedAdmin, 'L1 session execute denied even when PLATFORM_ADMIN is passed');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created');
+
+// 4.1c Spoofed audit actor identity denied before mutation
+authenticate({ username: 'analyst2', roleOverride: 'L2_ANALYST' });
+let errSpoofedActor = false;
+try {
+  await provider.requestResponseAction(sampleActionInput, 'spoofed_superadmin');
+} catch (err: any) {
+  errSpoofedActor = true;
+  assert(err.message.includes('Spoofed audit actor identity'), 'LocalProvider detects and rejects spoofed actor identity');
+}
+assert(errSpoofedActor, 'Spoofed audit actor identity denied before mutation');
+assert((await provider.getResponseActions('incident-001')).length === baselineActions, '0 actions created when spoofed actor is rejected');
+assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created when spoofed actor is rejected');
+
+// Spoofed approver identity on approveResponseAction
+authenticate({ username: 'manager', roleOverride: 'SOC_MANAGER' });
+let errSpoofedApprover = false;
+try {
+  await provider.approveResponseAction('act-fake', 'spoofed_executive');
+} catch (err: any) {
+  errSpoofedApprover = true;
+  assert(err.message.includes('Spoofed audit actor identity'), 'LocalProvider detects and rejects spoofed approver identity');
+}
+assert(errSpoofedApprover, 'Spoofed approver identity denied before mutation');
 assert((await provider.getAuditLogs()).length === baselineAudits, '0 audits created');
 
 // 4.2 L2_ANALYST is authorized to request containment
@@ -364,6 +433,16 @@ try {
   assert(err.message.includes('cannot approve response actions'), 'LocalProvider indicates role cannot approve');
 }
 assert(errProvL2Appr, 'LocalProvider blocked unauthorized approve directly');
+
+// 4.4b LocalProvider check: L2 session plus supplied PLATFORM_ADMIN role cannot approve
+let errProvL2ApprAdmin = false;
+try {
+  await provider.approveResponseAction(requestedAction.id, 'analyst2', 'PLATFORM_ADMIN');
+} catch (err: any) {
+  errProvL2ApprAdmin = true;
+  assert(err.message.includes('cannot approve response actions'), 'L2 session cannot approve even if PLATFORM_ADMIN is supplied in args');
+}
+assert(errProvL2ApprAdmin, 'LocalProvider blocked approve with caller-supplied PLATFORM_ADMIN role');
 
 // 4.5 L2_ANALYST cannot reject containment
 let errL2Rej = false;
