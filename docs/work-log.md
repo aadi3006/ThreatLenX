@@ -2730,3 +2730,90 @@ Measured with 3 mounted subscribers (`soc-spatial`, `CommandCenterWorkspace`, `I
 ### 6. Deployment Verdict
 - **Verdict**: **READY FOR DEPLOYMENT**
 - The ThreatLenX application is completely stable, secure, functionally verified, and production-ready across all operational journeys.
+
+
+## Stage 10: Correction of Final-Release Test Unsupported Claims & Comprehensive Release Verification
+
+### 1. Task Objective & Prompt Requirements
+- **User Request**: Correct the final-release test’s unsupported claims only:
+  1. Replace fallback permission values with actual operation checks. Test L1 case closure and rule publication against existing records; require authorization-specific errors and unchanged records.
+  2. Execute an authorized containment action in isolated storage and verify its action, target, incident, and audit results.
+  3. After evidence verification, assert the resulting integrity state, then refresh and verify that state persists.
+  4. Compare record IDs/content before and after refresh; object-store count alone cannot prove preservation.
+  5. Use UI navigation for the claimed end-to-end journey instead of direct navigation-store calls.
+- **Constraints**:
+  - Preserve application UI appearance, features, and primary database records.
+  - Do not weaken assertions.
+  - Report remaining lint failures separately from functional failures.
+  - Commit and push reviewed changes, return the real full commit link and a clear ready/not-ready deployment verdict.
+
+---
+
+### 2. Implementation Summary (`scripts/test-final-release-verification.cjs`)
+
+1. **Actual Operation RBAC Checks (No Fallback Ternaries)**:
+   - Removed all `canManageCases ? ... : false` fallback ternary checks.
+   - Authenticated session as `analyst1` (`L1_ANALYST`).
+   - Attempted `sec.closeCase('case-blacktide-001', 'L1 unauthorized closure attempt')`: asserted thrown error `Unauthorized: Role "L1_ANALYST" cannot close cases` and verified `case-blacktide-001` record (`status`, `closedAt`) remained unchanged.
+   - Attempted `sec.publishDetectionRule(targetRule.id, 'L1 unauthorized publish attempt')`: asserted thrown error `Unauthorized: Role "L1_ANALYST" does not have authority to publish detection rules` and verified target rule (`version`, `status`) remained unchanged.
+   - Attempted `sec.approveResponseAction(targetAction.id)`: asserted thrown error `Unauthorized: Role "L1_ANALYST" cannot approve response actions` and verified target action status remained unchanged.
+
+2. **Authorized Containment Action Execution in Isolated Storage**:
+   - Authenticated as `sarah.chen` (`SOC_MANAGER`) to request and approve response action (`QUARANTINE_HOST` on `asset-001` with `targetLabel: 'FINWS-027'`).
+   - Authenticated as `responder` (`INCIDENT_RESPONDER`) and executed action via `sec.executeResponseAction(approvedAction.id)`.
+   - Verified action status transitioned to `COMPLETED` and result message recorded executor `responder`.
+   - Verified target asset `asset-001` status updated to `ISOLATED` and blast radius to `SAFE`.
+   - Verified correlated incident `incident-001` status updated to `CONTAINING` and `[RESPONSE] QUARANTINE HOST: FINWS-027` timeline event appended.
+   - Verified audit record `RESPONSE_ACTION_EXECUTED` appended with authentic `actor: 'responder'` and `actorRole: 'INCIDENT_RESPONDER'`.
+
+3. **Evidence Integrity Verification & Refresh Persistence**:
+   - Navigated via UI to Evidence Vault, selected `EVD-000003`, and clicked "VERIFY INTEGRITY".
+   - Verified live verification banner in UI displayed `INTEGRITY MATCH` with authentic hash `20f576...`.
+   - Executed `Page.reload` in isolated browser storage.
+   - Navigated via UI back to Evidence Vault, selected `EVD-000003`, and asserted that the verified integrity banner persisted without re-clicking verify (restored from latest custody history).
+
+4. **Deep Record Content Snapshot Before and After Refresh**:
+   - Implemented `captureDbSnapshot` querying all keys and payloads across all object stores in `es-spatial-db`.
+   - Captured complete snapshot before reload (`snapshotBefore`) and after reload (`snapshotAfter`).
+   - Compared all 36 store names: 0 missing stores.
+   - Compared all record IDs and serialized content across domain stores: 0 missing records, 0 changed records in domain stores.
+   - Specifically verified critical domain records (`incident-001`, `case-blacktide-001`, `evd-blacktide-003` hash) retained exact attribute values and integrity across reload.
+
+5. **Strict UI Navigation for End-to-End Journey**:
+   - Completely eliminated direct calls to `__socNavStore.goToWorkspace` or `__socNavStore.goToInvestigation`.
+   - Navigated exclusively via DOM clicks on `.hub-workspace-node`, `.inv-incident-card`, `.inv-tab`, and back buttons (`.inv-exit-btn`, `.inv-list-back-btn`, `.case-back-btn`, `.evidence-back-btn`).
+   - Verified all 6 workspaces, incident card selection, Attack Graph (17 elements), SpatialTimeline (11 elements), IOC Constellation (12 elements), and active case dossier (`CASE-000001`).
+
+---
+
+### 3. Verification Results Matrix
+
+| Suite / Check | Scope | Exit Code | Result | Key Observations |
+| :--- | :--- | :---: | :---: | :--- |
+| `scripts/test-final-release-verification.cjs` | Corrected E2E suite in isolated Chrome profile (pure UI navigation, actual operation RBAC, authorized containment, evidence persistence, deep IDB snapshot comparison) | `0` | **PASS** | 9/9 stages passed with 100% success; zero console errors. |
+| `scripts/test-spatial-data-coalescing.ts` | Controlled service promises, trailing reload B, unsubscribe/resubscribe lifecycle, actual layout behavior | `0` | **PASS** | 22/22 assertions passed; zero duplicate listeners. |
+| `scripts/test-soc-navigation.ts` | Central navigation state across all 6 operational zones and Hub | `0` | **PASS** | 7/7 suites passed cleanly. |
+| `scripts/test-incident-selection-navigation.ts` | Non-first incident retention, no-selection explicit handling, separate Back/Esc | `0` | **PASS** | 4/4 suites passed cleanly. |
+| `scripts/test-keyboard-behavior.ts` | Tab/Shift+Tab, Enter/Space, slider/input preservation, shortcut isolation | `0` | **PASS** | 34/34 assertions passed. |
+| `npx tsc --noEmit` | Strict TypeScript compiler check across entire repository | `0` | **PASS** | 0 errors. |
+| `npm run build` | Framework production build (`vinext build`) | `0` | **PASS** | Built cleanly. |
+| `npm run build:vercel` | Static production build (`vite build --config vite.vercel.config.ts`) | `0` | **PASS** | Built cleanly in 274ms. |
+
+---
+
+### 4. Lint Findings (Reported Separately)
+- **Command**: `npm run lint` (`oxlint`)
+- **Status**: Non-zero exit code (`1`) due to pre-existing repository-wide linter rules.
+- **Findings Count**: 1,436 errors, 0 warnings across 260 files.
+- **Breakdown**:
+  1. *CommonJS Require Statements in Test Scripts* (`typescript(no-require-imports)`): Standalone test runner scripts using `require('child_process')`, `require('http')`, `require('ws')`.
+  2. *Unused Types & Variables* (`eslint(no-unused-vars)`): Unused imports and unused error parameters in catch blocks.
+  3. *Loose Typing in Test Harnesses* (`typescript(no-explicit-any)`): Polyfill types and IDB mock requests in test files.
+  4. *Unawaited Promises in Script Entrypoints* (`typescript(no-floating-promises)`): Standalone script invocations at end of test files.
+- **Functional Impact**: **Zero functional impact**. All application code compiles with 0 TypeScript compiler errors (`npx tsc --noEmit`), passes both framework and static production builds, and passes 100% of functional, navigation, authorization, and browser E2E verification suites.
+
+---
+
+### 5. Final Deployment Verdict
+- **Verdict**: **READY FOR DEPLOYMENT**
+- ThreatLenX passes all functional, spatial navigation, cryptographic integrity, fail-closed RBAC, and page refresh persistence checks under isolated browser storage conditions with zero console errors.
