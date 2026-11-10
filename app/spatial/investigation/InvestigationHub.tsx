@@ -345,13 +345,7 @@ function InvestigationHubInner({ panelId, onRegister, onExitFocus, onClose }: In
             </span>
           )}
           <button
-            className="inv-ai-btn"
-            style={{
-              borderColor: isContextualAiOpen ? '#00f0ff' : 'rgba(0, 240, 255, 0.4)',
-              color: '#00f0ff',
-              background: isContextualAiOpen ? 'rgba(0, 240, 255, 0.2)' : 'transparent',
-              marginRight: 4,
-            }}
+            className={`inv-ai-btn ${isContextualAiOpen ? 'active' : ''}`}
             onClick={() => {
               cyberAudio.playClick();
               setIsContextualAiOpen((prev) => !prev);

@@ -13,12 +13,9 @@ import { useInvestigation } from './InvestigationContext';
 import {
   AlertTriangle,
   ShieldCheck,
-  CheckCircle2,
   Crosshair,
   Server,
   Zap,
-  Tag,
-  ArrowRight,
 } from 'lucide-react';
 import { cyberAudio } from '../../cyber-audio';
 
@@ -27,7 +24,7 @@ interface IncidentFindingsViewProps {
   onSelectEntity?: (entity: any) => void;
 }
 
-export default function IncidentFindingsView({ incidentId }: IncidentFindingsViewProps) {
+export default function IncidentFindingsView({ incidentId: _incidentId }: IncidentFindingsViewProps) {
   const { data, setSelectedEntity } = useInvestigation();
 
   if (!data) {

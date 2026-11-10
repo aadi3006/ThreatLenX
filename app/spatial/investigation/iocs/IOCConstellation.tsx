@@ -17,6 +17,8 @@ import { EMPTY_ASSETS, EMPTY_USERS, EMPTY_IOCS, EMPTY_LINKS } from '../investiga
 import type { IOC } from '../../../core/models/entity';
 import type { IocGraphLink } from '../../../core/models/spatial-structures';
 import { ThreatIntelProfile } from '../../intel/ThreatIntelProfile';
+import { cyberAudio } from '../../../cyber-audio';
+import { Copy, Check } from 'lucide-react';
 
 const IOC_TYPE_COLOR: Record<string, string> = {
   HASH_SHA256:  '#ff2a2a',
@@ -48,6 +50,29 @@ export default function IOCConstellation() {
   const { data, selectedEntity, setSelectedEntity, replay, choreography } = useInvestigation();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedIntelIocId, setSelectedIntelIocId] = useState<string | null>(null);
+  const [copiedIocId, setCopiedIocId] = useState<string | null>(null);
+
+  const handleCopyIocValue = useCallback(async (value: string, id: string) => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        throw new Error('No clipboard API');
+      }
+    } catch {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = value;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch {}
+    }
+    setCopiedIocId(id);
+    cyberAudio.playClick();
+    setTimeout(() => setCopiedIocId(null), 2000);
+  }, []);
 
   const iocGraph  = data?.iocGraph;
   const allAssets = data?.allAssets ?? EMPTY_ASSETS;
@@ -313,26 +338,58 @@ export default function IOCConstellation() {
         const ioc = iocGraph.iocs.find((i) => i.id === selectedEntity.id);
         if (!ioc) return null;
         const color = IOC_TYPE_COLOR[ioc.type] ?? '#7b8ab8';
+        const isCopied = copiedIocId === ioc.id;
         return (
           <div className="ioc-detail-strip" style={{ borderColor: ioc.isBlocked ? '#3dffb0' : color }}>
-            <span className="ioc-det-type" style={{ color }}>{ioc.type}</span>
-            <span className="ioc-det-value">{ioc.value}</span>
-            <span className="ioc-det-meta">{ioc.threatType}</span>
-            <span className="ioc-det-rep" style={{ color }}>Rep: {ioc.reputationScore}</span>
-            <span className="ioc-det-conf">Conf: {Math.round(ioc.confidence * 100)}%</span>
-            <span className={`ioc-det-blocked ${ioc.isBlocked ? 'blocked' : 'active'}`}>
-              {ioc.isBlocked ? 'SHIELDED / BLOCKED' : 'ACTIVE THREAT'}
-            </span>
-            <button
-              className="ioc-det-intel-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedIntelIocId(ioc.id);
-              }}
-              aria-label={`Open Intelligence Profile for ${ioc.value}`}
-            >
-              ⚡ INTEL PROFILE
-            </button>
+            {/* Top metadata & actions row */}
+            <div className="ioc-det-header-row">
+              <div className="ioc-det-meta-group">
+                <span className="ioc-det-type" style={{ color }}>{ioc.type}</span>
+                <span className="ioc-det-meta">{ioc.threatType}</span>
+                <span className="ioc-det-rep" style={{ color }}>Rep: {ioc.reputationScore}</span>
+                <span className="ioc-det-conf">Conf: {Math.round(ioc.confidence * 100)}%</span>
+                <span className={`ioc-det-blocked ${ioc.isBlocked ? 'blocked' : 'active'}`}>
+                  {ioc.isBlocked ? 'SHIELDED / BLOCKED' : 'ACTIVE THREAT'}
+                </span>
+              </div>
+              <button
+                className="ioc-det-intel-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedIntelIocId(ioc.id);
+                }}
+                aria-label={`Open Intelligence Profile for ${ioc.value}`}
+              >
+                ⚡ INTEL PROFILE
+              </button>
+            </div>
+
+            {/* Dedicated full-width value row with copy button */}
+            <div className="ioc-det-value-row">
+              <span className="ioc-det-value" title={ioc.value}>{ioc.value}</span>
+              <button
+                type="button"
+                className={`ioc-det-copy-btn ${isCopied ? 'copied' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyIocValue(ioc.value, ioc.id);
+                }}
+                title={isCopied ? 'Copied to clipboard' : 'Copy IOC value'}
+                aria-label={isCopied ? 'Copied to clipboard' : 'Copy IOC value'}
+              >
+                {isCopied ? (
+                  <>
+                    <Check size={11} className="text-emerald" />
+                    <span>COPIED</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={11} />
+                    <span>COPY</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         );
       })()}

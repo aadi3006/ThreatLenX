@@ -17,9 +17,6 @@ import {
   Send,
   Clock,
   User,
-  Plus,
-  Tag,
-  CheckCircle2,
   Bookmark,
 } from 'lucide-react';
 import type { EvidenceAnnotation } from '../../core/models/evidence';
@@ -121,14 +118,17 @@ export default function IncidentNotesView({ incidentId }: IncidentNotesViewProps
         <form className="inv-notes-form" onSubmit={handleAddNote}>
           <div className="inv-form-header">
             <span className="inv-form-label">APPEND OPERATIONAL COMMENTARY</span>
-            <input
-              type="text"
-              value={authorName}
-              onChange={(e) => setAuthorName(e.target.value)}
-              className="inv-author-input"
-              placeholder="Analyst Name / Call-Sign"
-              title="Analyst Name"
-            />
+            <div className="inv-author-wrap">
+              <User size={11} className="text-cyan" />
+              <input
+                type="text"
+                value={authorName}
+                onChange={(e) => setAuthorName(e.target.value)}
+                className="inv-author-input"
+                placeholder="Analyst Name / Call-Sign"
+                title="Analyst Name"
+              />
+            </div>
           </div>
           <textarea
             className="inv-note-textarea"
